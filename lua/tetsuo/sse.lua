@@ -9,6 +9,7 @@ function M.new(opts)
   return {
     buffer = "",           -- incomplete line buffer
     tool_calls = {},       -- accumulated tool call fragments
+    usage = nil,           -- token usage from final chunk
     on_chunk = opts.on_chunk or function() end,
     on_tool_call = opts.on_tool_call or function() end,
     on_done = opts.on_done or function() end,
@@ -68,12 +69,17 @@ local function parse_payload(parser, json_str)
     end
   end
 
+  -- Capture usage if present
+  if data.usage then
+    parser.usage = data.usage
+  end
+
   -- Stream finished
   if finish_reason == "tool_calls" and #parser.tool_calls > 0 then
     parser.on_tool_call(parser.tool_calls)
     parser.tool_calls = {}
   elseif finish_reason == "stop" then
-    parser.on_done()
+    parser.on_done(parser.usage)
   end
 end
 

@@ -9,6 +9,7 @@ CONTENTS                                                    *tetsuo-contents*
   4. Keymaps ............................... |tetsuo-keymaps|
   5. Configuration ......................... |tetsuo-configuration|
   6. Tools ................................. |tetsuo-tools|
+  7. Project Config ........................ |tetsuo-project-config|
 
 ==============================================================================
 INTRODUCTION                                            *tetsuo-introduction*
@@ -17,9 +18,14 @@ TetsuoCode is a Neovim plugin that turns your editor into a Cursor-style AI
 coding IDE powered by xAI's Grok. It features:
 
 - Streaming chat panel with full conversation history
-- Tool calling: Grok can read/write files, run shell commands
+- Tool calling: Grok can read/write files, run shell commands, grep, explore
 - Inline code editing with visual diff preview
 - Auto-context: file, diagnostics, git branch, selection
+- User confirmation before file writes and shell commands
+- Token usage tracking with cost display
+- Conversation save/load to disk
+- Runtime model switching
+- Project-level config via .tetsuorc
 - Zero dependencies (just needs curl)
 
 ==============================================================================
@@ -30,7 +36,7 @@ SETUP                                                        *tetsuo-setup*
 <
 2. Install the plugin (lazy.nvim example): >lua
      {
-       "noahm/tetsuo-code",
+       "tetsuo-ai/TetsuoCode",
        config = function()
          require("tetsuo").setup()
        end,
@@ -63,6 +69,17 @@ COMMANDS                                                  *tetsuo-commands*
 :TetsuoReset                                                *:TetsuoReset*
     Reset the conversation history.
 
+:TetsuoModel [model]                                       *:TetsuoModel*
+    Switch the active Grok model. Without argument, opens a picker.
+    Example: :TetsuoModel grok-3-fast
+
+:TetsuoSave [name]                                          *:TetsuoSave*
+    Save conversation to disk. Default name is a timestamp.
+    Saved to vim.fn.stdpath("data")/tetsuo/
+
+:TetsuoLoad [name]                                          *:TetsuoLoad*
+    Load a saved conversation. Without argument, opens a picker.
+
 ==============================================================================
 KEYMAPS                                                    *tetsuo-keymaps*
 
@@ -78,10 +95,13 @@ Chat buffer keymaps:
   q             Close chat panel
   i / <CR>      Focus input buffer
   R             Reset conversation
+  <C-c>         Cancel streaming response
+  yc            Yank code block under cursor to clipboard
 
 Input buffer keymaps:
   <C-s>         Send message
   <CR>          Send message (normal mode)
+  <C-c>         Cancel streaming response
   q             Close panel
 
 Inline preview keymaps:
@@ -117,8 +137,8 @@ CONFIGURATION                                        *tetsuo-configuration*
     tools = {
       enabled = true,
       max_iterations = 10,
-      confirm_writes = true,
-      confirm_bash = true,
+      confirm_writes = true,  -- prompt before file writes
+      confirm_bash = true,    -- prompt before shell commands
       bash_timeout = 30000,
     },
   })
@@ -129,16 +149,33 @@ TOOLS                                                        *tetsuo-tools*
 TetsuoCode provides Grok with tools to interact with your editor:
 
   read_file           Read file contents
-  write_file          Write/create files
-  edit_file           Surgical string replacement in files
-  run_command         Execute shell commands
+  write_file          Write/create files (confirms with user)
+  edit_file           Surgical string replacement (confirms with user)
+  run_command         Execute shell commands (confirms with user)
   get_current_buffer  Read the active buffer
   get_diagnostics     Get LSP errors/warnings
   list_buffers        List open buffers
+  list_files          List project directory tree
+  grep_files          Search for patterns across files
 
 Grok decides when to use tools based on your request. For example,
 asking "fix the bug on line 42" will cause Grok to read the file,
 understand the issue, and edit it.
+
+Confirmation prompts can be disabled with confirm_writes = false
+and confirm_bash = false, or by choosing "Always" when prompted.
+
+==============================================================================
+PROJECT CONFIG                                      *tetsuo-project-config*
+
+Create a `.tetsuorc` file in your project root (JSON format): >json
+  {
+    "model": "grok-3",
+    "temperature": 0.5,
+    "system_prompt": "You are working on a Rust project using Actix-web."
+  }
+<
+This is merged with your global config. Project settings override globals.
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:

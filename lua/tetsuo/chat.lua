@@ -17,6 +17,7 @@ local state = {
   streaming = false,
   current_response = "",
   response_start_line = 0,
+  usage = nil,      -- cumulative token usage
 }
 
 -- Check if chat window is open
@@ -43,6 +44,12 @@ local function ensure_chat_buffer()
   vim.keymap.set("n", "i", function() M.focus_input() end, kopts)
   vim.keymap.set("n", "<CR>", function() M.focus_input() end, kopts)
   vim.keymap.set("n", "R", function() M.reset() end, kopts)
+
+  -- Ctrl+C to cancel streaming
+  vim.keymap.set("n", "<C-c>", function() M.cancel_stream() end, kopts)
+
+  -- Yank code block under cursor
+  vim.keymap.set("n", "yc", function() M.yank_code_block() end, kopts)
 
   return state.buf
 end
@@ -73,6 +80,11 @@ local function ensure_input_buffer()
 
   vim.keymap.set("n", "q", function()
     M.close()
+  end, kopts)
+
+  -- Ctrl+C to cancel in input buffer too
+  vim.keymap.set({ "n", "i" }, "<C-c>", function()
+    M.cancel_stream()
   end, kopts)
 
   return state.input_buf
@@ -140,8 +152,14 @@ function M.open()
       "",
       "  i / Enter  → focus input",
       "  <C-s>      → send message",
+      "  <C-c>      → cancel response",
+      "  yc         → yank code block",
       "  q          → close panel",
       "  R          → reset chat",
+      "",
+      "  :TetsuoModel   → switch model",
+      "  :TetsuoSave    → save conversation",
+      "  :TetsuoLoad    → load conversation",
       "",
       "─────────────────────────────────────────",
       "",
@@ -347,7 +365,7 @@ function M._do_completion(iteration)
       M._do_completion(iteration + 1)
     end,
 
-    on_done = function()
+    on_done = function(usage)
       utils.stop_spinner()
       state.streaming = false
 
@@ -359,7 +377,30 @@ function M._do_completion(iteration)
         })
       end
 
-      append_to_chat({ "", "╰──────────────────────────────────────", "" })
+      -- Display token usage if available
+      local usage_line = ""
+      if usage then
+        state.usage = state.usage or { prompt_tokens = 0, completion_tokens = 0, total_tokens = 0 }
+        state.usage.prompt_tokens = state.usage.prompt_tokens + (usage.prompt_tokens or 0)
+        state.usage.completion_tokens = state.usage.completion_tokens + (usage.completion_tokens or 0)
+        state.usage.total_tokens = state.usage.total_tokens + (usage.total_tokens or 0)
+        usage_line = string.format("  [tokens: %d in / %d out / %d total session]",
+          usage.prompt_tokens or 0, usage.completion_tokens or 0, state.usage.total_tokens)
+      end
+
+      if usage_line ~= "" then
+        append_to_chat({ "", usage_line })
+      end
+      append_to_chat({ "╰──────────────────────────────────────", "" })
+
+      -- Update statusline with usage
+      if state.win and vim.api.nvim_win_is_valid(state.win) then
+        local status = " 鉄 TetsuoCode"
+        if state.usage then
+          status = status .. string.format("  [%d tokens]", state.usage.total_tokens)
+        end
+        vim.wo[state.win].statusline = status
+      end
     end,
 
     on_error = function(err)
@@ -408,6 +449,7 @@ function M.reset()
   state.messages = {}
   state.current_response = ""
   state.streaming = false
+  state.usage = nil
 
   if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
     vim.bo[state.buf].modifiable = true
@@ -424,9 +466,189 @@ function M.reset()
   utils.notify("Chat reset.")
 end
 
+-- Cancel active stream
+function M.cancel_stream()
+  if api.is_busy() then
+    api.cancel()
+    utils.stop_spinner()
+    state.streaming = false
+    append_to_chat({ "", "  [cancelled]", "" })
+    append_to_chat({ "╰──────────────────────────────────────", "" })
+    utils.notify("Response cancelled.")
+  end
+end
+
+-- Yank the code block under cursor to clipboard
+function M.yank_code_block()
+  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then return end
+
+  local cursor = vim.api.nvim_win_get_cursor(state.win or 0)
+  local line_nr = cursor[1]
+  local lines = vim.api.nvim_buf_get_lines(state.buf, 0, -1, false)
+
+  -- Search backwards for opening ```
+  local start_line = nil
+  for i = line_nr, 1, -1 do
+    if lines[i]:match("^```") then
+      start_line = i
+      break
+    end
+  end
+
+  if not start_line then
+    utils.warn("No code block found at cursor.")
+    return
+  end
+
+  -- Search forwards for closing ```
+  local end_line = nil
+  for i = start_line + 1, #lines do
+    if lines[i]:match("^```%s*$") then
+      end_line = i
+      break
+    end
+  end
+
+  if not end_line then
+    utils.warn("No closing ``` found for code block.")
+    return
+  end
+
+  -- Extract content between fences
+  local code_lines = {}
+  for i = start_line + 1, end_line - 1 do
+    table.insert(code_lines, lines[i])
+  end
+
+  local code = table.concat(code_lines, "\n")
+  vim.fn.setreg("+", code)
+  vim.fn.setreg('"', code)
+  utils.notify(string.format("Yanked %d lines to clipboard.", #code_lines))
+end
+
+-- Save conversation to disk
+function M.save(name)
+  local dir = vim.fn.stdpath("data") .. "/tetsuo"
+  if vim.fn.isdirectory(dir) ~= 1 then
+    vim.fn.mkdir(dir, "p")
+  end
+
+  name = name or os.date("%Y%m%d_%H%M%S")
+  local filepath = dir .. "/" .. name .. ".json"
+
+  local data = utils.json_encode({
+    messages = state.messages,
+    timestamp = os.date("%Y-%m-%dT%H:%M:%S"),
+    model = config.get().model,
+  })
+
+  local f = io.open(filepath, "w")
+  if f then
+    f:write(data)
+    f:close()
+    utils.notify("Saved conversation to " .. filepath)
+  else
+    utils.error("Failed to save conversation.")
+  end
+end
+
+-- Load conversation from disk
+function M.load(name)
+  local dir = vim.fn.stdpath("data") .. "/tetsuo"
+
+  if not name then
+    -- List available saves
+    local files = vim.fn.globpath(dir, "*.json", false, true)
+    if #files == 0 then
+      utils.notify("No saved conversations found.")
+      return
+    end
+
+    vim.ui.select(files, {
+      prompt = "Load conversation:",
+      format_item = function(item)
+        return vim.fn.fnamemodify(item, ":t:r")
+      end,
+    }, function(choice)
+      if choice then
+        M._load_file(choice)
+      end
+    end)
+    return
+  end
+
+  local filepath = dir .. "/" .. name .. ".json"
+  M._load_file(filepath)
+end
+
+function M._load_file(filepath)
+  local f = io.open(filepath, "r")
+  if not f then
+    utils.error("File not found: " .. filepath)
+    return
+  end
+
+  local content = f:read("*a")
+  f:close()
+
+  local data = utils.json_decode(content)
+  if not data or not data.messages then
+    utils.error("Invalid conversation file.")
+    return
+  end
+
+  state.messages = data.messages
+  state.current_response = ""
+  state.streaming = false
+
+  -- Rebuild chat display
+  if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+    vim.bo[state.buf].modifiable = true
+    vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, {
+      "╭──────────────────────────────────────╮",
+      "│         鉄 TetsuoCode                │",
+      "│    Loaded: " .. vim.fn.fnamemodify(filepath, ":t:r") .. string.rep(" ", 26 - #vim.fn.fnamemodify(filepath, ":t:r")) .. "│",
+      "╰──────────────────────────────────────╯",
+      "",
+    })
+    vim.bo[state.buf].modifiable = false
+
+    -- Re-render messages
+    local cfg = config.get()
+    for _, msg in ipairs(state.messages) do
+      if msg.role == "user" then
+        append_to_chat({
+          "╭─ " .. cfg.ui.icons.user .. " ─────────────────────────────",
+          "",
+        })
+        for _, line in ipairs(vim.split(msg.content, "\n")) do
+          append_to_chat({ "  " .. line })
+        end
+        append_to_chat({ "", "╰──────────────────────────────────────", "" })
+      elseif msg.role == "assistant" and msg.content then
+        append_to_chat({
+          "╭─ " .. cfg.ui.icons.assistant .. " ────────────────────────────",
+          "",
+        })
+        for _, line in ipairs(vim.split(msg.content, "\n")) do
+          append_to_chat({ line })
+        end
+        append_to_chat({ "", "╰──────────────────────────────────────", "" })
+      end
+    end
+  end
+
+  utils.notify("Loaded conversation (" .. #state.messages .. " messages).")
+end
+
 -- Get state (for external access)
 function M.get_state()
   return state
+end
+
+-- Get token usage (for statusline)
+function M.get_usage()
+  return state.usage or {}
 end
 
 return M

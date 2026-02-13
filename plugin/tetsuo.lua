@@ -38,3 +38,35 @@ end, { desc = "Close TetsuoCode chat panel" })
 vim.api.nvim_create_user_command("TetsuoReset", function()
   require("tetsuo.chat").reset()
 end, { desc = "Reset TetsuoCode conversation" })
+
+vim.api.nvim_create_user_command("TetsuoModel", function(opts)
+  local models = {
+    "grok-3-fast",
+    "grok-3",
+    "grok-3-mini",
+    "grok-2-vision-1212",
+  }
+
+  if opts.args ~= "" then
+    require("tetsuo.config").set_model(opts.args)
+    vim.notify("[TetsuoCode] Model set to: " .. opts.args, vim.log.levels.INFO)
+    return
+  end
+
+  vim.ui.select(models, {
+    prompt = "Select Grok model:",
+  }, function(choice)
+    if choice then
+      require("tetsuo.config").set_model(choice)
+      vim.notify("[TetsuoCode] Model set to: " .. choice, vim.log.levels.INFO)
+    end
+  end)
+end, { nargs = "?", desc = "Switch TetsuoCode model" })
+
+vim.api.nvim_create_user_command("TetsuoSave", function(opts)
+  require("tetsuo.chat").save(opts.args ~= "" and opts.args or nil)
+end, { nargs = "?", desc = "Save TetsuoCode conversation" })
+
+vim.api.nvim_create_user_command("TetsuoLoad", function(opts)
+  require("tetsuo.chat").load(opts.args ~= "" and opts.args or nil)
+end, { nargs = "?", desc = "Load TetsuoCode conversation" })

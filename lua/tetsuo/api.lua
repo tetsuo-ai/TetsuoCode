@@ -64,9 +64,9 @@ function M.stream_chat(opts)
         if opts.on_tool_call then opts.on_tool_call(tool_calls) end
       end)
     end,
-    on_done = function()
+    on_done = function(usage)
       vim.schedule(function()
-        if opts.on_done then opts.on_done() end
+        if opts.on_done then opts.on_done(usage) end
       end)
     end,
     on_error = function(err)

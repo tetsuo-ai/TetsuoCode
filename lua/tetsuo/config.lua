@@ -53,12 +53,34 @@ When responding:
 
 M.options = {}
 
+-- Load .tetsuorc from project root if it exists
+local function load_project_config()
+  local rc_path = vim.fn.getcwd() .. "/.tetsuorc"
+  if vim.fn.filereadable(rc_path) ~= 1 then
+    return {}
+  end
+
+  local lines = vim.fn.readfile(rc_path)
+  local content = table.concat(lines, "\n")
+  local ok, data = pcall(vim.json.decode, content)
+  if ok and type(data) == "table" then
+    return data
+  end
+  return {}
+end
+
 function M.setup(opts)
-  M.options = vim.tbl_deep_extend("force", {}, M.defaults, opts or {})
+  local project_opts = load_project_config()
+  M.options = vim.tbl_deep_extend("force", {}, M.defaults, project_opts, opts or {})
   -- Resolve API key from env if not set
   if not M.options.api_key then
     M.options.api_key = vim.env.XAI_API_KEY
   end
+end
+
+-- Switch model at runtime
+function M.set_model(model)
+  M.options.model = model
 end
 
 function M.get()
