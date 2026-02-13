@@ -1,0 +1,144 @@
+*tetsuo.txt*  TetsuoCode: Cursor for Vim, Powered by Grok
+
+==============================================================================
+CONTENTS                                                    *tetsuo-contents*
+
+  1. Introduction .......................... |tetsuo-introduction|
+  2. Setup ................................. |tetsuo-setup|
+  3. Commands .............................. |tetsuo-commands|
+  4. Keymaps ............................... |tetsuo-keymaps|
+  5. Configuration ......................... |tetsuo-configuration|
+  6. Tools ................................. |tetsuo-tools|
+
+==============================================================================
+INTRODUCTION                                            *tetsuo-introduction*
+
+TetsuoCode is a Neovim plugin that turns your editor into a Cursor-style AI
+coding IDE powered by xAI's Grok. It features:
+
+- Streaming chat panel with full conversation history
+- Tool calling: Grok can read/write files, run shell commands
+- Inline code editing with visual diff preview
+- Auto-context: file, diagnostics, git branch, selection
+- Zero dependencies (just needs curl)
+
+==============================================================================
+SETUP                                                        *tetsuo-setup*
+
+1. Set your API key:  >
+     export XAI_API_KEY="your-key-here"
+<
+2. Install the plugin (lazy.nvim example): >lua
+     {
+       "noahm/tetsuo-code",
+       config = function()
+         require("tetsuo").setup()
+       end,
+     }
+<
+3. Or with options: >lua
+     require("tetsuo").setup({
+       model = "grok-3-fast",
+       temperature = 0.5,
+       keymaps = {
+         toggle_chat = "<leader>tc",
+       },
+     })
+<
+==============================================================================
+COMMANDS                                                  *tetsuo-commands*
+
+:Tetsuo                                                          *:Tetsuo*
+    Toggle the chat panel.
+
+:TetsuoAsk {prompt}                                           *:TetsuoAsk*
+    Send a question to Grok. Opens chat if closed.
+
+:TetsuoInline                                              *:TetsuoInline*
+    Inline edit visual selection with AI assistance.
+
+:TetsuoClose                                                *:TetsuoClose*
+    Close the chat panel.
+
+:TetsuoReset                                                *:TetsuoReset*
+    Reset the conversation history.
+
+==============================================================================
+KEYMAPS                                                    *tetsuo-keymaps*
+
+Default keymaps (configurable via setup):
+
+  <leader>tc    Toggle chat panel
+  <leader>ta    Ask a question (prompts for input)
+  <leader>ti    Inline edit selection (visual mode)
+  <leader>tr    Reset conversation
+  <leader>tf    Fix diagnostics in current buffer
+
+Chat buffer keymaps:
+  q             Close chat panel
+  i / <CR>      Focus input buffer
+  R             Reset conversation
+
+Input buffer keymaps:
+  <C-s>         Send message
+  <CR>          Send message (normal mode)
+  q             Close panel
+
+Inline preview keymaps:
+  y             Accept edit
+  n             Reject edit
+  q / <Esc>     Close preview
+
+==============================================================================
+CONFIGURATION                                        *tetsuo-configuration*
+
+>lua
+  require("tetsuo").setup({
+    api_key = nil,            -- or set XAI_API_KEY env var
+    model = "grok-3-fast",    -- xAI model to use
+    base_url = "https://api.x.ai/v1",
+    max_tokens = 4096,
+    temperature = 0.7,
+
+    ui = {
+      width = 0.38,           -- chat panel width (fraction)
+      position = "right",     -- "right" or "left"
+      border = "rounded",     -- floating window border
+    },
+
+    keymaps = {
+      toggle_chat = "<leader>tc",
+      ask = "<leader>ta",
+      inline_edit = "<leader>ti",
+      reset = "<leader>tr",
+      fix_diagnostics = "<leader>tf",
+    },
+
+    tools = {
+      enabled = true,
+      max_iterations = 10,
+      confirm_writes = true,
+      confirm_bash = true,
+      bash_timeout = 30000,
+    },
+  })
+<
+==============================================================================
+TOOLS                                                        *tetsuo-tools*
+
+TetsuoCode provides Grok with tools to interact with your editor:
+
+  read_file           Read file contents
+  write_file          Write/create files
+  edit_file           Surgical string replacement in files
+  run_command         Execute shell commands
+  get_current_buffer  Read the active buffer
+  get_diagnostics     Get LSP errors/warnings
+  list_buffers        List open buffers
+
+Grok decides when to use tools based on your request. For example,
+asking "fix the bug on line 42" will cause Grok to read the file,
+understand the issue, and edit it.
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

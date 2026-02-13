@@ -1,0 +1,71 @@
+local M = {}
+
+M.defaults = {
+  api_key = nil, -- falls back to $XAI_API_KEY
+  model = "grok-3-fast",
+  base_url = "https://api.x.ai/v1",
+  max_tokens = 4096,
+  temperature = 0.7,
+  system_prompt = [[You are TetsuoCode, an elite AI coding assistant embedded in Neovim. You are powered by Grok.
+
+You have access to tools for reading files, writing files, editing files, and running shell commands. Use them when the user asks you to modify code, explore a project, or run commands.
+
+When editing code:
+- Be precise and surgical. Only change what's needed.
+- Show the user what you changed and why.
+- If you're unsure, ask before making destructive changes.
+
+When responding:
+- Be concise and direct.
+- Use markdown for formatting.
+- Include code blocks with language tags for syntax highlighting.
+- Don't over-explain obvious things.]],
+
+  ui = {
+    width = 0.38,       -- chat panel width as fraction of editor
+    position = "right",  -- "right" or "left"
+    border = "rounded",  -- border style for floating windows
+    icons = {
+      user = " You",
+      assistant = "鉄 Tetsuo",
+      system = " System",
+      tool = " Tool",
+      spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" },
+    },
+  },
+
+  keymaps = {
+    toggle_chat = "<leader>tc",
+    ask = "<leader>ta",
+    inline_edit = "<leader>ti",
+    reset = "<leader>tr",
+    fix_diagnostics = "<leader>tf",
+  },
+
+  tools = {
+    enabled = true,
+    max_iterations = 10,
+    confirm_writes = true,   -- ask before writing files
+    confirm_bash = true,     -- ask before running shell commands
+    bash_timeout = 30000,    -- ms
+  },
+}
+
+M.options = {}
+
+function M.setup(opts)
+  M.options = vim.tbl_deep_extend("force", {}, M.defaults, opts or {})
+  -- Resolve API key from env if not set
+  if not M.options.api_key then
+    M.options.api_key = vim.env.XAI_API_KEY
+  end
+end
+
+function M.get()
+  if vim.tbl_isempty(M.options) then
+    M.setup()
+  end
+  return M.options
+end
+
+return M

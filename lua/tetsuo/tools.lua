@@ -1,0 +1,81 @@
+-- Tool registry and execution engine
+local config = require("tetsuo.config")
+local utils = require("tetsuo.utils")
+local file_tools = require("tetsuo.tools.file")
+local bash_tools = require("tetsuo.tools.bash")
+local buffer_tools = require("tetsuo.tools.buffer")
+
+local M = {}
+
+-- Map tool names to their handler functions
+local handlers = {
+  read_file = file_tools.read_file,
+  write_file = file_tools.write_file,
+  edit_file = file_tools.edit_file,
+  run_command = bash_tools.run_command,
+  get_current_buffer = buffer_tools.get_current_buffer,
+  get_diagnostics = buffer_tools.get_diagnostics,
+  list_buffers = buffer_tools.list_buffers,
+}
+
+-- Get all tool definitions for the API
+function M.get_definitions()
+  local cfg = config.get()
+  if not cfg.tools.enabled then return {} end
+
+  local defs = {}
+  for _, d in ipairs(file_tools.definitions) do table.insert(defs, d) end
+  for _, d in ipairs(bash_tools.definitions) do table.insert(defs, d) end
+  for _, d in ipairs(buffer_tools.definitions) do table.insert(defs, d) end
+  return defs
+end
+
+-- Execute a single tool call
+function M.execute(name, arguments)
+  local handler = handlers[name]
+  if not handler then
+    return { error = "Unknown tool: " .. name }
+  end
+
+  -- Parse arguments if string
+  local args = arguments
+  if type(args) == "string" then
+    args = utils.json_decode(args) or {}
+  end
+
+  -- Execute with pcall for safety
+  local ok, result = pcall(handler, args)
+  if not ok then
+    return { error = "Tool execution failed: " .. tostring(result) }
+  end
+
+  return result
+end
+
+-- Execute a batch of tool calls and return results as messages
+function M.execute_tool_calls(tool_calls, on_status)
+  local results = {}
+
+  for _, tc in ipairs(tool_calls) do
+    local name = tc["function"].name
+    local args_str = tc["function"].arguments
+
+    if on_status then
+      on_status("Running tool: " .. name)
+    end
+
+    local args = utils.json_decode(args_str) or {}
+    local result = M.execute(name, args)
+    local result_str = utils.json_encode(result)
+
+    table.insert(results, {
+      role = "tool",
+      tool_call_id = tc.id,
+      content = result_str,
+    })
+  end
+
+  return results
+end
+
+return M
