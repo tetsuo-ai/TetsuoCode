@@ -12,7 +12,7 @@
 
 ---
 
-A Neovim plugin that turns your editor into an AI coding IDE. Streaming chat panel, agentic tool calling, inline code editing — all powered by xAI's Grok. Zero dependencies.
+A Neovim plugin that turns your editor into an AI coding IDE. Streaming chat panel, agentic tool calling, inline code editing - all powered by xAI's Grok. Zero dependencies.
 
 ## Features
 
