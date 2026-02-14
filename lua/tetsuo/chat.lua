@@ -125,7 +125,7 @@ function M.open()
   vim.wo[state.win].wrap = true
   vim.wo[state.win].linebreak = true
   vim.wo[state.win].winfixwidth = true
-  vim.wo[state.win].statusline = " 鉄 TetsuoCode"
+  vim.wo[state.win].statusline = " tetsuo"
 
   -- Create input area at the bottom (horizontal split within the chat panel)
   vim.cmd("belowright 3split")
@@ -135,7 +135,7 @@ function M.open()
   vim.wo[state.input_win].relativenumber = false
   vim.wo[state.input_win].signcolumn = "no"
   vim.wo[state.input_win].winfixheight = true
-  vim.wo[state.input_win].statusline = " > Type message (<C-s> send, q close)"
+  vim.wo[state.input_win].statusline = " > message"
 
   -- Set placeholder text
   if vim.api.nvim_buf_line_count(input_buf) <= 1 and vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] == "" then
@@ -145,23 +145,23 @@ function M.open()
   -- Show welcome if first open
   if vim.api.nvim_buf_line_count(chat_buf) <= 1 then
     local welcome = {
-      "╭──────────────────────────────────────╮",
-      "│         鉄 TetsuoCode                │",
-      "│    Cursor for Vim, Powered by Grok   │",
-      "╰──────────────────────────────────────╯",
       "",
-      "  i / Enter  → focus input",
-      "  <C-s>      → send message",
-      "  <C-c>      → cancel response",
-      "  yc         → yank code block",
-      "  q          → close panel",
-      "  R          → reset chat",
+      "  tetsuo",
       "",
-      "  :TetsuoModel   → switch model",
-      "  :TetsuoSave    → save conversation",
-      "  :TetsuoLoad    → load conversation",
+      "  ──────────────────────────────────",
       "",
-      "─────────────────────────────────────────",
+      "  i          enter input",
+      "  ctrl+s     send",
+      "  ctrl+c     cancel",
+      "  yc         yank code block",
+      "  q          close",
+      "  R          reset",
+      "",
+      "  :TetsuoModel    switch model",
+      "  :TetsuoSave     save",
+      "  :TetsuoLoad     load",
+      "",
+      "  ──────────────────────────────────",
       "",
     }
     vim.api.nvim_buf_set_lines(chat_buf, 0, -1, false, welcome)
@@ -252,14 +252,15 @@ function M.send(message, selection, sel_start, sel_end)
   -- Display user message in chat
   local cfg = config.get()
   append_to_chat({
-    "╭─ " .. cfg.ui.icons.user .. " ─────────────────────────────",
+    "",
+    "  " .. cfg.ui.icons.user,
     "",
   })
   local user_lines = vim.split(message, "\n")
   for _, line in ipairs(user_lines) do
     append_to_chat({ "  " .. line })
   end
-  append_to_chat({ "", "╰──────────────────────────────────────", "" })
+  append_to_chat({ "" })
 
   -- Add to conversation history
   table.insert(state.messages, {
@@ -277,13 +278,15 @@ function M._do_completion(iteration)
   local cfg = config.get()
 
   if iteration > cfg.tools.max_iterations then
-    append_to_chat({ "", "  [max tool iterations reached]", "" })
+    append_to_chat({ "", "  max tool iterations reached", "" })
     return
   end
 
   -- Display assistant header
   append_to_chat({
-    "╭─ " .. cfg.ui.icons.assistant .. " ────────────────────────────",
+    "  ──────────────────────────────────",
+    "",
+    "  " .. cfg.ui.icons.assistant,
     "",
   })
 
@@ -338,7 +341,7 @@ function M._do_completion(iteration)
         append_to_chat({
           "",
           "  " .. cfg.ui.icons.tool .. " " .. name,
-          "  " .. args_preview,
+          "    " .. args_preview,
         })
       end
 
@@ -356,10 +359,10 @@ function M._do_completion(iteration)
         if #preview > 200 then
           preview = preview:sub(1, 200) .. "..."
         end
-        append_to_chat({ "  ✓ " .. preview:gsub("\n", " "), "" })
+        append_to_chat({ "    " .. preview:gsub("\n", " "), "" })
       end
 
-      append_to_chat({ "╰──────────────────────────────────────", "" })
+      append_to_chat({ "" })
 
       -- Continue the conversation with tool results
       M._do_completion(iteration + 1)
@@ -391,13 +394,13 @@ function M._do_completion(iteration)
       if usage_line ~= "" then
         append_to_chat({ "", usage_line })
       end
-      append_to_chat({ "╰──────────────────────────────────────", "" })
+      append_to_chat({ "" })
 
       -- Update statusline with usage
       if state.win and vim.api.nvim_win_is_valid(state.win) then
-        local status = " 鉄 TetsuoCode"
+        local status = " tetsuo"
         if state.usage then
-          status = status .. string.format("  [%d tokens]", state.usage.total_tokens)
+          status = status .. string.format(" | %d tokens", state.usage.total_tokens)
         end
         vim.wo[state.win].statusline = status
       end
@@ -406,8 +409,7 @@ function M._do_completion(iteration)
     on_error = function(err)
       utils.stop_spinner()
       state.streaming = false
-      append_to_chat({ "", "  [Error: " .. tostring(err) .. "]", "" })
-      append_to_chat({ "╰──────────────────────────────────────", "" })
+      append_to_chat({ "", "  error: " .. tostring(err), "" })
     end,
   })
 end
@@ -454,10 +456,10 @@ function M.reset()
   if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
     vim.bo[state.buf].modifiable = true
     vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, {
-      "╭──────────────────────────────────────╮",
-      "│         鉄 TetsuoCode                │",
-      "│         Chat reset.                  │",
-      "╰──────────────────────────────────────╯",
+      "",
+      "  tetsuo",
+      "",
+      "  chat reset.",
       "",
     })
     vim.bo[state.buf].modifiable = false
@@ -472,8 +474,7 @@ function M.cancel_stream()
     api.cancel()
     utils.stop_spinner()
     state.streaming = false
-    append_to_chat({ "", "  [cancelled]", "" })
-    append_to_chat({ "╰──────────────────────────────────────", "" })
+    append_to_chat({ "", "  cancelled", "" })
     utils.notify("Response cancelled.")
   end
 end
@@ -605,10 +606,10 @@ function M._load_file(filepath)
   if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
     vim.bo[state.buf].modifiable = true
     vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, {
-      "╭──────────────────────────────────────╮",
-      "│         鉄 TetsuoCode                │",
-      "│    Loaded: " .. vim.fn.fnamemodify(filepath, ":t:r") .. string.rep(" ", 26 - #vim.fn.fnamemodify(filepath, ":t:r")) .. "│",
-      "╰──────────────────────────────────────╯",
+      "",
+      "  tetsuo",
+      "",
+      "  loaded: " .. vim.fn.fnamemodify(filepath, ":t:r"),
       "",
     })
     vim.bo[state.buf].modifiable = false
@@ -618,22 +619,25 @@ function M._load_file(filepath)
     for _, msg in ipairs(state.messages) do
       if msg.role == "user" then
         append_to_chat({
-          "╭─ " .. cfg.ui.icons.user .. " ─────────────────────────────",
+          "",
+          "  " .. cfg.ui.icons.user,
           "",
         })
         for _, line in ipairs(vim.split(msg.content, "\n")) do
           append_to_chat({ "  " .. line })
         end
-        append_to_chat({ "", "╰──────────────────────────────────────", "" })
+        append_to_chat({ "" })
       elseif msg.role == "assistant" and msg.content then
         append_to_chat({
-          "╭─ " .. cfg.ui.icons.assistant .. " ────────────────────────────",
+          "  ──────────────────────────────────",
+          "",
+          "  " .. cfg.ui.icons.assistant,
           "",
         })
         for _, line in ipairs(vim.split(msg.content, "\n")) do
           append_to_chat({ line })
         end
-        append_to_chat({ "", "╰──────────────────────────────────────", "" })
+        append_to_chat({ "" })
       end
     end
   end

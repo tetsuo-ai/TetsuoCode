@@ -24,13 +24,13 @@ When responding:
   ui = {
     width = 0.38,       -- chat panel width as fraction of editor
     position = "right",  -- "right" or "left"
-    border = "rounded",  -- border style for floating windows
+    border = "single",   -- border style for floating windows
     icons = {
-      user = " You",
-      assistant = "鉄 Tetsuo",
-      system = " System",
-      tool = " Tool",
-      spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" },
+      user = ">",
+      assistant = "tetsuo",
+      system = "system",
+      tool = "$",
+      spinner = { ".", "..", "...", "..", "." },
     },
   },
 

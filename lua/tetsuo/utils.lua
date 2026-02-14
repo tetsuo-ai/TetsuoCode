@@ -3,13 +3,15 @@ local M = {}
 -- Highlight groups for TetsuoCode
 function M.setup_highlights()
   local hl = vim.api.nvim_set_hl
-  hl(0, "TetsuoUser", { fg = "#61afef", bold = true })
-  hl(0, "TetsuoAssistant", { fg = "#c678dd", bold = true })
-  hl(0, "TetsuoSystem", { fg = "#e5c07b", bold = true })
-  hl(0, "TetsuoTool", { fg = "#98c379", bold = true })
-  hl(0, "TetsuoBorder", { fg = "#5c6370" })
-  hl(0, "TetsuoSpinner", { fg = "#c678dd" })
-  hl(0, "TetsuoSeparator", { fg = "#3e4452" })
+  hl(0, "TetsuoUser", { fg = "#e0e0e0", bold = true })
+  hl(0, "TetsuoAssistant", { fg = "#ffffff", bold = true })
+  hl(0, "TetsuoSystem", { fg = "#707070", italic = true })
+  hl(0, "TetsuoTool", { fg = "#999999" })
+  hl(0, "TetsuoBorder", { fg = "#404040" })
+  hl(0, "TetsuoSpinner", { fg = "#808080" })
+  hl(0, "TetsuoSeparator", { fg = "#2a2a2a" })
+  hl(0, "TetsuoDim", { fg = "#555555" })
+  hl(0, "TetsuoAccent", { fg = "#cccccc", bold = true })
 end
 
 -- Spinner state
@@ -40,7 +42,7 @@ function M.start_spinner(buf, line)
     spinner_state.idx = (spinner_state.idx % #frames) + 1
     local frame = frames[spinner_state.idx]
     pcall(vim.api.nvim_buf_set_lines, spinner_state.buf, spinner_state.line, spinner_state.line + 1, false,
-      { "  " .. frame .. " thinking..." })
+      { "  " .. frame })
   end))
 end
 
@@ -57,12 +59,12 @@ function M.separator(label, width)
   width = width or 50
   local pad = width - #label - 4
   if pad < 2 then pad = 2 end
-  return "╭─ " .. label .. " " .. string.rep("─", pad) .. "╮"
+  return "  " .. label .. " " .. string.rep("─", pad)
 end
 
 function M.separator_end(width)
   width = width or 50
-  return "╰" .. string.rep("─", width - 2) .. "╯"
+  return string.rep("─", width)
 end
 
 -- Wrap text to width
@@ -91,7 +93,7 @@ end
 
 -- Notify helper
 function M.notify(msg, level)
-  vim.notify("[TetsuoCode] " .. msg, level or vim.log.levels.INFO)
+  vim.notify("[tetsuo] " .. msg, level or vim.log.levels.INFO)
 end
 
 function M.error(msg)

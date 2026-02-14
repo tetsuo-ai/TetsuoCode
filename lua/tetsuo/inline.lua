@@ -59,18 +59,20 @@ local function show_preview(original, replacement, ft)
 
   -- Build preview content
   local lines = {
-    "── Original ──────────────────────────",
+    "  original",
+    "  ──────────────────────────────────",
   }
   for _, l in ipairs(vim.split(original, "\n")) do
-    table.insert(lines, "- " .. l)
+    table.insert(lines, "  - " .. l)
   end
   table.insert(lines, "")
-  table.insert(lines, "── Replacement ───────────────────────")
+  table.insert(lines, "  replacement")
+  table.insert(lines, "  ──────────────────────────────────")
   for _, l in ipairs(vim.split(replacement, "\n")) do
-    table.insert(lines, "+ " .. l)
+    table.insert(lines, "  + " .. l)
   end
   table.insert(lines, "")
-  table.insert(lines, "── y: accept │ n: reject ─────────────")
+  table.insert(lines, "  y: accept  n: reject")
 
   vim.api.nvim_buf_set_lines(preview_state.buf, 0, -1, false, lines)
 
@@ -89,7 +91,7 @@ local function show_preview(original, replacement, ft)
     col = col,
     style = "minimal",
     border = cfg.ui.border,
-    title = " TetsuoCode: Inline Edit ",
+    title = " tetsuo: edit ",
     title_pos = "center",
   })
 
@@ -128,7 +130,7 @@ function M.edit_selection()
   local bufname = vim.api.nvim_buf_get_name(bufnr)
 
   -- Prompt for instruction
-  vim.ui.input({ prompt = "TetsuoCode edit instruction: " }, function(instruction)
+  vim.ui.input({ prompt = "tetsuo > " }, function(instruction)
     if not instruction or instruction == "" then return end
 
     preview_state.target_buf = bufnr
