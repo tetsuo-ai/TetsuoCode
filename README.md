@@ -38,7 +38,7 @@ export XAI_API_KEY="xai-..."
 **lazy.nvim**
 ```lua
 {
-  "tetsuo-ai/TetsuoCode",
+  "tetsuo-ai/tetsuo-code",
   config = function()
     require("tetsuo").setup()
   end,
@@ -48,7 +48,7 @@ export XAI_API_KEY="xai-..."
 **packer.nvim**
 ```lua
 use {
-  "tetsuo-ai/TetsuoCode",
+  "tetsuo-ai/tetsuo-code",
   config = function()
     require("tetsuo").setup()
   end,
@@ -105,7 +105,7 @@ Grok has access to these tools and uses them autonomously:
 ```lua
 require("tetsuo").setup({
   api_key = nil,            -- or set XAI_API_KEY env var
-  model = "grok-3-fast",    -- grok-3-fast, grok-3, grok-3-mini
+  model = "grok-4-1-fast-reasoning",    -- grok-4-1-fast-reasoning, Grok 4.1 Fast (Non-Reasoning)
   base_url = "https://api.x.ai/v1",
   max_tokens = 4096,
   temperature = 0.7,
@@ -140,7 +140,7 @@ Create a `.tetsuorc` in your project root:
 
 ```json
 {
-  "model": "grok-3",
+  "model": "grok-4-1-fast-reasoning",
   "temperature": 0.5,
   "system_prompt": "You are working on a Rust project using Actix-web."
 }
