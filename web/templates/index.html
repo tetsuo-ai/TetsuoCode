@@ -12,6 +12,9 @@
 </head>
 <body>
   <div class="app">
+    <!-- Mobile sidebar overlay -->
+    <div class="sidebar-overlay hidden" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
@@ -25,6 +28,20 @@
       </div>
       <div class="sidebar-chats" id="chatHistory"></div>
       <div class="sidebar-footer">
+        <div class="sidebar-actions">
+          <button class="sidebar-action-btn" onclick="exportChats()" title="Export chats">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 10v3h10v-3M8 2v8M5 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            export
+          </button>
+          <button class="sidebar-action-btn" onclick="importChats()" title="Import chats">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 10v3h10v-3M8 10V2M5 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            import
+          </button>
+          <button class="sidebar-action-btn" onclick="toggleSettings()" title="Settings (Ctrl+,)">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5L13 13M13 3l-1.5 1.5M4.5 11.5L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            settings
+          </button>
+        </div>
         <div class="model-select">
           <label>model</label>
           <select id="modelSelect">
@@ -38,9 +55,36 @@
       </div>
     </aside>
 
+    <!-- Settings Panel -->
+    <div class="settings-panel hidden" id="settingsPanel">
+      <div class="settings-header">
+        <span>settings</span>
+        <button class="settings-close" onclick="toggleSettings()">&times;</button>
+      </div>
+      <div class="settings-body">
+        <div class="setting-group">
+          <label>temperature</label>
+          <input type="range" id="settingTemp" min="0" max="1" step="0.1" value="0.7">
+          <span class="setting-value" id="tempValue">0.7</span>
+        </div>
+        <div class="setting-group">
+          <label>max tokens</label>
+          <input type="number" id="settingMaxTokens" value="4096" min="256" max="32768" step="256">
+        </div>
+        <div class="setting-group">
+          <label>system prompt</label>
+          <textarea id="settingSystemPrompt" rows="4" placeholder="Custom system prompt (leave empty for default)"></textarea>
+        </div>
+        <button class="settings-save" onclick="applySettings()">save</button>
+      </div>
+    </div>
+
     <!-- Main chat area -->
     <main class="chat-area">
       <div class="chat-header">
+        <button class="hamburger" onclick="toggleSidebar()">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
         <span class="chat-title" id="chatTitle">new chat</span>
       </div>
 
@@ -60,6 +104,10 @@
       <!-- Input area -->
       <div class="input-area">
         <div class="input-container">
+          <button class="template-btn" onclick="toggleTemplates()" title="Prompt templates">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h12M2 6.5h8M2 10h10M2 13.5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+          <div class="template-menu hidden" id="templateMenu"></div>
           <textarea id="messageInput" placeholder="ask tetsuo anything..." rows="1" autofocus></textarea>
           <button class="send-btn" id="sendBtn" onclick="sendMessage()">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 13l10-5L3 3v4l6 1-6 1v4z" fill="currentColor"/></svg>
@@ -68,11 +116,17 @@
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="3" width="10" height="10" rx="1" fill="currentColor"/></svg>
           </button>
         </div>
-        <div class="input-hint">enter to send &middot; shift+enter for newline &middot; esc to cancel &middot; ctrl+n new chat</div>
+        <div class="input-hint">enter to send &middot; shift+enter for newline &middot; ctrl+n new chat &middot; ctrl+, settings</div>
       </div>
     </main>
   </div>
 
   <script src="/static/app.js"></script>
+  <script>
+    // Wire up temperature slider display
+    const tempSlider = document.getElementById("settingTemp");
+    const tempValue = document.getElementById("tempValue");
+    tempSlider.addEventListener("input", () => { tempValue.textContent = tempSlider.value; });
+  </script>
 </body>
 </html>

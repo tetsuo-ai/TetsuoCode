@@ -13,7 +13,13 @@ let streaming = false;
 let abortController = null;
 let totalTokens = { prompt: 0, completion: 0, total: 0 };
 let currentChatId = null;
-let chats = {}; // { id: { title, messages, tokens } }
+let chats = {};
+let autoScroll = true;
+let settings = {
+  temperature: 0.7,
+  max_tokens: 4096,
+  system_prompt: "",
+};
 
 // Configure marked for code highlighting
 marked.setOptions({
@@ -55,6 +61,16 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     if (!streaming) newChat();
   }
+  if (e.key === "," && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    toggleSettings();
+  }
+});
+
+// Auto-scroll detection
+messagesEl.addEventListener("scroll", () => {
+  const { scrollTop, scrollHeight, clientHeight } = messagesEl;
+  autoScroll = scrollHeight - scrollTop - clientHeight < 60;
 });
 
 function insertPrompt(text) {
@@ -75,12 +91,24 @@ function saveState() {
   try {
     localStorage.setItem("tetsuocode_chats", JSON.stringify(chats));
     localStorage.setItem("tetsuocode_current", currentChatId);
-  } catch (e) {
-    // localStorage full or unavailable
-  }
+  } catch (e) {}
+}
+
+function loadSettings() {
+  try {
+    const saved = localStorage.getItem("tetsuocode_settings");
+    if (saved) settings = { ...settings, ...JSON.parse(saved) };
+  } catch (e) {}
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem("tetsuocode_settings", JSON.stringify(settings));
+  } catch (e) {}
 }
 
 function loadState() {
+  loadSettings();
   try {
     const saved = localStorage.getItem("tetsuocode_chats");
     const current = localStorage.getItem("tetsuocode_current");
@@ -92,9 +120,7 @@ function loadState() {
         return;
       }
     }
-  } catch (e) {
-    // corrupted data, start fresh
-  }
+  } catch (e) {}
   newChat();
 }
 
@@ -137,14 +163,14 @@ function loadChat(id) {
   chatTitleEl.textContent = chat.title || "new chat";
   tokenCountEl.textContent = totalTokens.total ? `${totalTokens.total.toLocaleString()} tokens` : "";
 
-  // Re-render messages
   messagesEl.innerHTML = "";
   if (messages.length === 0) {
     showWelcome();
   } else {
-    for (const msg of messages) {
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
       if (msg.role === "user" || msg.role === "assistant") {
-        addMessage(msg.role, msg.content, true);
+        addMessage(msg.role, msg.content, true, msg.timestamp);
       }
     }
   }
@@ -200,10 +226,77 @@ function showWelcome() {
     </div>`;
 }
 
+// ── Export / Import ──────────────────────────────────
+
+function exportChats() {
+  const data = JSON.stringify(chats, null, 2);
+  const blob = new Blob([data], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `tetsuocode-export-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importChats() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json";
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        Object.assign(chats, imported);
+        localStorage.setItem("tetsuocode_chats", JSON.stringify(chats));
+        renderChatHistory();
+      } catch (err) {
+        alert("Invalid JSON file");
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// ── Settings Panel ──────────────────────────────────
+
+function toggleSettings() {
+  const panel = document.getElementById("settingsPanel");
+  const isOpen = !panel.classList.contains("hidden");
+  if (isOpen) {
+    panel.classList.add("hidden");
+  } else {
+    document.getElementById("settingTemp").value = settings.temperature;
+    document.getElementById("settingMaxTokens").value = settings.max_tokens;
+    document.getElementById("settingSystemPrompt").value = settings.system_prompt;
+    panel.classList.remove("hidden");
+  }
+}
+
+function applySettings() {
+  settings.temperature = parseFloat(document.getElementById("settingTemp").value) || 0.7;
+  settings.max_tokens = parseInt(document.getElementById("settingMaxTokens").value) || 4096;
+  settings.system_prompt = document.getElementById("settingSystemPrompt").value.trim();
+  saveSettings();
+  toggleSettings();
+}
+
 // ── Rendering ──────────────────────────────────────
 
 function scrollToBottom() {
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  if (autoScroll) {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+}
+
+function formatTime(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function renderMarkdown(text) {
@@ -214,7 +307,6 @@ function renderMarkdown(text) {
     html = escapeHtml(text);
   }
 
-  // Add copy buttons and language labels to code blocks
   html = html.replace(
     /<pre><code class="language-(\w+)">/g,
     '<pre><div class="code-header"><span>$1</span><button class="copy-btn" onclick="copyCode(this)" aria-label="Copy code">copy</button></div><code class="language-$1">'
@@ -238,8 +330,19 @@ function copyCode(btn) {
   });
 }
 
-function addMessage(role, content, silent) {
-  // Remove welcome screen
+function copyMessage(btn) {
+  const body = btn.closest(".message").querySelector(".message-body");
+  const text = body.innerText || body.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = "copied";
+    setTimeout(() => (btn.textContent = "copy"), 2000);
+  }).catch(() => {
+    btn.textContent = "failed";
+    setTimeout(() => (btn.textContent = "copy"), 2000);
+  });
+}
+
+function addMessage(role, content, silent, timestamp) {
   const welcome = messagesEl.querySelector(".welcome");
   if (welcome) welcome.remove();
 
@@ -247,10 +350,19 @@ function addMessage(role, content, silent) {
   div.className = `message ${role}`;
 
   const roleLabel = role === "user" ? "you" : "tetsuo";
+  const time = formatTime(timestamp || Date.now());
+  const actions = role === "assistant"
+    ? `<div class="message-actions">
+        <button class="msg-action-btn" onclick="copyMessage(this)">copy</button>
+        <button class="msg-action-btn" onclick="regenerate()">retry</button>
+       </div>`
+    : "";
 
   div.innerHTML = `
     <div class="message-header">
       <span class="message-role">${roleLabel}</span>
+      <span class="message-time">${time}</span>
+      ${actions}
     </div>
     <div class="message-body">${role === "user" ? escapeHtml(content).replace(/\n/g, "<br>") : renderMarkdown(content)}</div>
   `;
@@ -269,6 +381,8 @@ function escapeHtml(text) {
 function addThinking() {
   const welcome = messagesEl.querySelector(".welcome");
   if (welcome) welcome.remove();
+
+  document.title = "tetsuocode ...";
 
   const div = document.createElement("div");
   div.className = "message assistant";
@@ -293,7 +407,6 @@ function showToolThinking() {
   if (!streamMsg) return;
   const body = streamMsg.querySelector(".message-body");
 
-  // Add a thinking indicator after tool calls
   let thinkingEl = body.querySelector(".tool-thinking");
   if (!thinkingEl) {
     thinkingEl = document.createElement("div");
@@ -316,6 +429,17 @@ function removeToolThinking() {
   if (thinkingEl) thinkingEl.remove();
 }
 
+function formatToolOutput(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    const pretty = JSON.stringify(parsed, null, 2);
+    const highlighted = hljs.highlight(pretty, { language: "json" }).value;
+    return highlighted;
+  } catch (e) {
+    return escapeHtml(raw);
+  }
+}
+
 function addToolCall(name, args) {
   const streamMsg = document.getElementById("streamingMessage");
   if (!streamMsg) return;
@@ -335,12 +459,12 @@ function addToolCall(name, args) {
   if (argsPreview.length > 200) argsPreview = argsPreview.slice(0, 200) + "...";
 
   toolDiv.innerHTML = `
-    <div class="tool-call-header">
-      <span>$</span>
+    <div class="tool-call-header" onclick="this.parentElement.classList.toggle('collapsed')">
+      <span class="tool-collapse-icon">&#9660;</span>
       <span class="tool-name">${escapeHtml(name)}</span>
       <span class="tool-status">running</span>
     </div>
-    <div class="tool-call-body">${escapeHtml(argsPreview)}</div>
+    <div class="tool-call-body"><code>${formatToolOutput(argsPreview)}</code></div>
   `;
 
   body.appendChild(toolDiv);
@@ -354,44 +478,42 @@ function addToolResult(name, result) {
 
   removeToolThinking();
 
-  // Find the last tool-call div and update it
   const toolDivs = streamMsg.querySelectorAll(".tool-call");
   if (toolDivs.length > 0) {
     const lastTool = toolDivs[toolDivs.length - 1];
     const resultBody = lastTool.querySelector(".tool-call-body");
     const statusEl = lastTool.querySelector(".tool-status");
     let preview = result;
-    if (preview.length > 300) preview = preview.slice(0, 300) + "...";
-    resultBody.textContent = preview;
+    if (preview.length > 500) preview = preview.slice(0, 500) + "...";
+    resultBody.innerHTML = `<code>${formatToolOutput(preview)}</code>`;
     if (statusEl) statusEl.textContent = "done";
+    // Auto-collapse completed tool calls
+    lastTool.classList.add("collapsed");
   }
 
-  // Show thinking again for next iteration
   showToolThinking();
   scrollToBottom();
 }
 
 // ── Chat ──────────────────────────────────────
 
-async function sendMessage() {
-  const text = inputEl.value.trim();
+async function sendMessage(retryText) {
+  const text = retryText || inputEl.value.trim();
   if (!text || streaming) return;
 
-  // Add user message
-  addMessage("user", text);
-  messages.push({ role: "user", content: text });
+  if (!retryText) {
+    addMessage("user", text, false, Date.now());
+    messages.push({ role: "user", content: text, timestamp: Date.now() });
+  }
 
-  // Set temporary title from first message
   if (messages.filter((m) => m.role === "user").length === 1) {
     const title = text.length > 40 ? text.slice(0, 40) + "..." : text;
     chatTitleEl.textContent = title;
   }
 
-  // Clear input
   inputEl.value = "";
   inputEl.style.height = "auto";
 
-  // Start streaming
   streaming = true;
   sendBtn.classList.add("hidden");
   cancelBtn.classList.remove("hidden");
@@ -399,15 +521,21 @@ async function sendMessage() {
   const streamMsg = addThinking();
   const body = streamMsg.querySelector(".message-body");
   let fullContent = "";
+  let hadError = false;
 
   abortController = new AbortController();
 
   try {
     const model = document.getElementById("modelSelect").value;
+    const payload = { messages, model };
+    if (settings.temperature !== 0.7) payload.temperature = settings.temperature;
+    if (settings.max_tokens !== 4096) payload.max_tokens = settings.max_tokens;
+    if (settings.system_prompt) payload.system_prompt = settings.system_prompt;
+
     const resp = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, model }),
+      body: JSON.stringify(payload),
       signal: abortController.signal,
     });
 
@@ -439,7 +567,6 @@ async function sendMessage() {
         }
 
         if (data.type === "content") {
-          // First content chunk - clear thinking indicator
           if (!fullContent) {
             body.innerHTML = "";
           }
@@ -460,7 +587,8 @@ async function sendMessage() {
           tokenCountEl.textContent = `${totalTokens.total.toLocaleString()} tokens`;
         } else if (data.type === "error") {
           removeToolThinking();
-          body.innerHTML = `<span class="error-text">${escapeHtml(data.content)}</span>`;
+          hadError = true;
+          body.innerHTML = `<span class="error-text">${escapeHtml(data.content)}</span><button class="retry-btn" onclick="retryLast()">retry</button>`;
         } else if (data.type === "done") {
           removeToolThinking();
         }
@@ -473,13 +601,14 @@ async function sendMessage() {
         body.innerHTML = '<span class="dim-text">cancelled</span>';
       }
     } else {
+      hadError = true;
       let errorMsg = "connection failed";
       if (e.message.includes("server returned")) {
         errorMsg = e.message;
       } else if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError")) {
         errorMsg = "network error - check your connection";
       }
-      body.innerHTML = `<span class="error-text">${escapeHtml(errorMsg)}</span>`;
+      body.innerHTML = `<span class="error-text">${escapeHtml(errorMsg)}</span><button class="retry-btn" onclick="retryLast()">retry</button>`;
     }
   }
 
@@ -487,11 +616,11 @@ async function sendMessage() {
   body.classList.remove("streaming-cursor");
   removeToolThinking();
   streamMsg.removeAttribute("id");
+  document.title = "tetsuocode";
 
   if (fullContent) {
-    messages.push({ role: "assistant", content: fullContent });
+    messages.push({ role: "assistant", content: fullContent, timestamp: Date.now() });
 
-    // Generate smart title after first exchange
     const userMsgs = messages.filter((m) => m.role === "user");
     if (userMsgs.length === 1) {
       generateTitle(userMsgs[0].content, fullContent);
@@ -510,6 +639,38 @@ async function sendMessage() {
 function cancelStream() {
   if (abortController) {
     abortController.abort();
+  }
+}
+
+function retryLast() {
+  if (streaming) return;
+  // Remove the error message element
+  const allMsgs = messagesEl.querySelectorAll(".message");
+  if (allMsgs.length > 0) {
+    allMsgs[allMsgs.length - 1].remove();
+  }
+  // Find the last user message
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  if (lastUser) {
+    sendMessage(lastUser.content);
+  }
+}
+
+function regenerate() {
+  if (streaming) return;
+  // Remove last assistant message from DOM and messages array
+  const allMsgs = messagesEl.querySelectorAll(".message");
+  if (allMsgs.length > 0) {
+    allMsgs[allMsgs.length - 1].remove();
+  }
+  // Pop the last assistant message
+  while (messages.length > 0 && messages[messages.length - 1].role === "assistant") {
+    messages.pop();
+  }
+  // Re-send last user message
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  if (lastUser) {
+    sendMessage(lastUser.content);
   }
 }
 
@@ -557,9 +718,80 @@ async function generateTitle(userMsg, assistantMsg) {
       saveState();
       renderChatHistory();
     }
-  } catch (e) {
-    // title generation is best-effort
+  } catch (e) {}
+}
+
+// ── Mobile ──────────────────────────────────────
+
+function toggleSidebar() {
+  const sidebar = document.querySelector(".sidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+  sidebar.classList.toggle("open");
+  overlay.classList.toggle("hidden");
+}
+
+// ── Prompt Templates ──────────────────────────────
+
+const defaultTemplates = [
+  { name: "explain code", prompt: "Explain what this code does and how it works" },
+  { name: "find bugs", prompt: "Find and fix any bugs in this code" },
+  { name: "write tests", prompt: "Write comprehensive tests for this project" },
+  { name: "refactor", prompt: "Refactor this code for better performance and readability" },
+  { name: "add docs", prompt: "Add documentation and comments to this code" },
+  { name: "security audit", prompt: "Review this code for security vulnerabilities" },
+];
+
+function toggleTemplates() {
+  const menu = document.getElementById("templateMenu");
+  menu.classList.toggle("hidden");
+  if (!menu.classList.contains("hidden")) {
+    renderTemplates();
   }
+}
+
+function renderTemplates() {
+  const menu = document.getElementById("templateMenu");
+  let saved = [];
+  try {
+    saved = JSON.parse(localStorage.getItem("tetsuocode_templates") || "[]");
+  } catch (e) {}
+  const all = [...defaultTemplates, ...saved];
+
+  menu.innerHTML = all.map((t, i) =>
+    `<div class="template-item" onclick="useTemplate(${i})">
+      <span>${escapeHtml(t.name)}</span>
+    </div>`
+  ).join("") +
+  `<div class="template-item template-save" onclick="saveTemplate()">
+    <span>+ save current as template</span>
+  </div>`;
+}
+
+function useTemplate(index) {
+  let saved = [];
+  try {
+    saved = JSON.parse(localStorage.getItem("tetsuocode_templates") || "[]");
+  } catch (e) {}
+  const all = [...defaultTemplates, ...saved];
+  if (all[index]) {
+    inputEl.value = all[index].prompt;
+    inputEl.focus();
+  }
+  document.getElementById("templateMenu").classList.add("hidden");
+}
+
+function saveTemplate() {
+  const text = inputEl.value.trim();
+  if (!text) { alert("Type a prompt first, then save it as a template."); return; }
+  const name = prompt("Template name:");
+  if (!name) return;
+  let saved = [];
+  try {
+    saved = JSON.parse(localStorage.getItem("tetsuocode_templates") || "[]");
+  } catch (e) {}
+  saved.push({ name, prompt: text });
+  localStorage.setItem("tetsuocode_templates", JSON.stringify(saved));
+  document.getElementById("templateMenu").classList.add("hidden");
 }
 
 // ── Init ──────────────────────────────────────

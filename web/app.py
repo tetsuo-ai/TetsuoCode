@@ -79,6 +79,22 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "edit_file",
+            "description": "Make a surgical text replacement in a file. Finds old_string and replaces it with new_string.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to the file"},
+                    "old_string": {"type": "string", "description": "Exact string to find"},
+                    "new_string": {"type": "string", "description": "Replacement string"},
+                },
+                "required": ["path", "old_string", "new_string"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "grep_files",
             "description": "Search for a pattern across files.",
             "parameters": {
@@ -114,6 +130,25 @@ def execute_tool(name, args):
         content = args.get("content", "")
         try:
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            return json.dumps({"success": True, "path": path})
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    elif name == "edit_file":
+        path = args.get("path", "")
+        old_string = args.get("old_string", "")
+        new_string = args.get("new_string", "")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            count = content.count(old_string)
+            if count == 0:
+                return json.dumps({"error": "old_string not found in file"})
+            if count > 1:
+                return json.dumps({"error": f"old_string found {count} times, must be unique"})
+            content = content.replace(old_string, new_string, 1)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
             return json.dumps({"success": True, "path": path})
@@ -198,9 +233,13 @@ def chat():
     data = request.json
     messages = data.get("messages", [])
     model = data.get("model", MODEL)
+    temperature = data.get("temperature", 0.7)
+    max_tokens = data.get("max_tokens", 4096)
+    custom_system = data.get("system_prompt", "")
 
     # Prepend system message
-    full_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
+    sys_prompt = custom_system if custom_system else SYSTEM_PROMPT
+    full_messages = [{"role": "system", "content": sys_prompt}] + messages
 
     def generate():
         nonlocal full_messages
@@ -214,8 +253,8 @@ def chat():
             body = {
                 "model": model,
                 "messages": full_messages,
-                "max_tokens": 4096,
-                "temperature": 0.7,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
                 "stream": True,
                 "tools": TOOL_DEFINITIONS,
                 "tool_choice": "auto",
