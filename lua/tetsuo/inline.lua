@@ -141,7 +141,7 @@ function M.edit_selection()
     local messages = {
       {
         role = "system",
-        content = "You are TetsuoCode, an inline code editor. The user has selected code and wants you to edit it. "
+        content = "You are tetsuocode, an inline code editor. The user has selected code and wants you to edit it. "
           .. "Return ONLY the replacement code. No markdown fences, no explanation, no preamble. "
           .. "Just the raw code that should replace the selection.",
       },

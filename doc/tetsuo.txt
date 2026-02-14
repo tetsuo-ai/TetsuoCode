@@ -1,4 +1,4 @@
-*tetsuo.txt*  TetsuoCode: Cursor for Vim, Powered by Grok
+*tetsuo.txt*  tetsuocode: Cursor for Vim, Powered by Grok
 
 ==============================================================================
 CONTENTS                                                    *tetsuo-contents*
@@ -14,7 +14,7 @@ CONTENTS                                                    *tetsuo-contents*
 ==============================================================================
 INTRODUCTION                                            *tetsuo-introduction*
 
-TetsuoCode is a Neovim plugin that turns your editor into a Cursor-style AI
+tetsuocode is a Neovim plugin that turns your editor into a Cursor-style AI
 coding IDE powered by xAI's Grok. It features:
 
 - Streaming chat panel with full conversation history
@@ -36,7 +36,7 @@ SETUP                                                        *tetsuo-setup*
 <
 2. Install the plugin (lazy.nvim example): >lua
      {
-       "tetsuo-ai/TetsuoCode",
+       "tetsuo-ai/tetsuocode",
        config = function()
          require("tetsuo").setup()
        end,
@@ -146,7 +146,7 @@ CONFIGURATION                                        *tetsuo-configuration*
 ==============================================================================
 TOOLS                                                        *tetsuo-tools*
 
-TetsuoCode provides Grok with tools to interact with your editor:
+tetsuocode provides Grok with tools to interact with your editor:
 
   read_file           Read file contents
   write_file          Write/create files (confirms with user)

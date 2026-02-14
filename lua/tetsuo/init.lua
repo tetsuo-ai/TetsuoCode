@@ -1,4 +1,4 @@
--- TetsuoCode: Cursor for Vim, Powered by Grok
+-- tetsuocode: Cursor for Vim, Powered by Grok
 local config = require("tetsuo.config")
 local utils = require("tetsuo.utils")
 
@@ -19,17 +19,17 @@ function M.setup(opts)
   if km.toggle_chat then
     vim.keymap.set("n", km.toggle_chat, function()
       require("tetsuo.chat").toggle()
-    end, vim.tbl_extend("force", kopts, { desc = "TetsuoCode: Toggle chat" }))
+    end, vim.tbl_extend("force", kopts, { desc = "tetsuocode: Toggle chat" }))
   end
 
   if km.ask then
     vim.keymap.set("n", km.ask, function()
-      vim.ui.input({ prompt = "TetsuoCode: " }, function(input)
+      vim.ui.input({ prompt = "tetsuocode: " }, function(input)
         if input and input ~= "" then
           require("tetsuo.chat").ask(input)
         end
       end)
-    end, vim.tbl_extend("force", kopts, { desc = "TetsuoCode: Ask question" }))
+    end, vim.tbl_extend("force", kopts, { desc = "tetsuocode: Ask question" }))
   end
 
   if km.inline_edit then
@@ -39,13 +39,13 @@ function M.setup(opts)
       vim.schedule(function()
         require("tetsuo.inline").edit_selection()
       end)
-    end, vim.tbl_extend("force", kopts, { desc = "TetsuoCode: Inline edit selection" }))
+    end, vim.tbl_extend("force", kopts, { desc = "tetsuocode: Inline edit selection" }))
   end
 
   if km.reset then
     vim.keymap.set("n", km.reset, function()
       require("tetsuo.chat").reset()
-    end, vim.tbl_extend("force", kopts, { desc = "TetsuoCode: Reset chat" }))
+    end, vim.tbl_extend("force", kopts, { desc = "tetsuocode: Reset chat" }))
   end
 
   if km.fix_diagnostics then
@@ -78,7 +78,7 @@ function M.setup(opts)
       local chat = require("tetsuo.chat")
       if not chat.is_open() then chat.open() end
       chat.send(prompt)
-    end, vim.tbl_extend("force", kopts, { desc = "TetsuoCode: Fix diagnostics" }))
+    end, vim.tbl_extend("force", kopts, { desc = "tetsuocode: Fix diagnostics" }))
   end
 
   -- Validate API key

@@ -36,7 +36,7 @@ local function ensure_chat_buffer()
   vim.bo[state.buf].bufhidden = "hide"
   vim.bo[state.buf].swapfile = false
   vim.bo[state.buf].filetype = "markdown"
-  vim.api.nvim_buf_set_name(state.buf, "TetsuoCode")
+  vim.api.nvim_buf_set_name(state.buf, "tetsuocode")
 
   -- Chat buffer keymaps
   local kopts = { buffer = state.buf, noremap = true, silent = true }

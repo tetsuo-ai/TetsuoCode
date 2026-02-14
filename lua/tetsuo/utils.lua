@@ -1,6 +1,6 @@
 local M = {}
 
--- Highlight groups for TetsuoCode
+-- Highlight groups for tetsuocode
 function M.setup_highlights()
   local hl = vim.api.nvim_set_hl
   hl(0, "TetsuoUser", { fg = "#e0e0e0", bold = true })

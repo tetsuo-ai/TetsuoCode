@@ -1,4 +1,4 @@
-"""TetsuoCode Web - Cursor-style AI coding assistant powered by Grok"""
+"""tetsuocode Web - Cursor-style AI coding assistant powered by Grok"""
 import json
 import os
 import requests
@@ -10,7 +10,7 @@ API_KEY = os.environ.get("XAI_API_KEY", "")
 BASE_URL = "https://api.x.ai/v1"
 MODEL = "grok-4-1-fast-reasoning"
 
-SYSTEM_PROMPT = """You are TetsuoCode, an elite AI coding assistant. You are powered by Grok.
+SYSTEM_PROMPT = """You are tetsuocode, an elite AI coding assistant. You are powered by Grok.
 
 When responding:
 - Be concise and direct.
@@ -349,5 +349,5 @@ def models():
 if __name__ == "__main__":
     if not API_KEY:
         print("WARNING: XAI_API_KEY not set. Set it before making requests.")
-    print("Starting TetsuoCode Web on http://localhost:5000")
+    print("Starting tetsuocode Web on http://localhost:5000")
     app.run(debug=True, port=5000, use_reloader=False)

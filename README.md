@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="assets/banner.jpg" alt="TetsuoCode" width="100%" />
+  <img src="assets/banner.jpg" alt="tetsuocode" width="100%" />
 </p>
 <p align="center"><strong>Cursor for Vim, Powered by Grok.</strong></p>
 
 <p align="center">
-  <a href="https://github.com/tetsuo-ai/TetsuoCode/stargazers"><img src="https://img.shields.io/github/stars/tetsuo-ai/TetsuoCode?style=flat-square" /></a>
-  <a href="https://github.com/tetsuo-ai/TetsuoCode/blob/main/LICENSE"><img src="https://img.shields.io/github/license/tetsuo-ai/TetsuoCode?style=flat-square" /></a>
+  <a href="https://github.com/tetsuo-ai/tetsuo-code/stargazers"><img src="https://img.shields.io/github/stars/tetsuo-ai/tetsuo-code?style=flat-square" /></a>
+  <a href="https://github.com/tetsuo-ai/tetsuo-code/blob/main/LICENSE"><img src="https://img.shields.io/github/license/tetsuo-ai/tetsuo-code?style=flat-square" /></a>
   <img src="https://img.shields.io/badge/neovim-%3E%3D0.9-green?style=flat-square&logo=neovim" />
   <img src="https://img.shields.io/badge/powered%20by-Grok-blue?style=flat-square" />
 </p>

@@ -1,4 +1,4 @@
-// TetsuoCode Web - Frontend
+// tetsuocode Web - Frontend
 
 const messagesEl = document.getElementById("messages");
 const inputEl = document.getElementById("messageInput");

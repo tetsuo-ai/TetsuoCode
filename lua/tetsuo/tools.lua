@@ -45,7 +45,7 @@ local function check_confirmation(name, args)
   if CONFIRM_WRITE_TOOLS[name] and cfg.tools.confirm_writes then
     local path = args.path or "unknown"
     local choice = vim.fn.confirm(
-      string.format("[TetsuoCode] Allow %s on %s?", name, path),
+      string.format("[tetsuocode] Allow %s on %s?", name, path),
       "&Yes\n&No\n&Always", 2
     )
     if choice == 3 then
@@ -60,7 +60,7 @@ local function check_confirmation(name, args)
     local cmd = args.command or "unknown"
     if #cmd > 80 then cmd = cmd:sub(1, 80) .. "..." end
     local choice = vim.fn.confirm(
-      string.format("[TetsuoCode] Run command?\n%s", cmd),
+      string.format("[tetsuocode] Run command?\n%s", cmd),
       "&Yes\n&No\n&Always", 2
     )
     if choice == 3 then
