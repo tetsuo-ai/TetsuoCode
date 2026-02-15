@@ -1,0 +1,102 @@
+{
+  "name": "tetsuocode",
+  "displayName": "tetsuocode",
+  "description": "AI coding assistant powered by Grok",
+  "version": "1.0.0",
+  "publisher": "tetsuo-ai",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tetsuo-ai/tetsuo-code"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["AI", "Chat", "Programming Languages"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{
+        "id": "tetsuocode",
+        "title": "tetsuocode",
+        "icon": "icon.png"
+      }]
+    },
+    "views": {
+      "tetsuocode": [{
+        "type": "webview",
+        "id": "tetsuocode.chat",
+        "name": "Chat"
+      }]
+    },
+    "commands": [
+      { "command": "tetsuocode.toggle", "title": "Toggle Chat", "category": "tetsuocode" },
+      { "command": "tetsuocode.explain", "title": "Explain Selection", "category": "tetsuocode" },
+      { "command": "tetsuocode.refactor", "title": "Refactor Selection", "category": "tetsuocode" },
+      { "command": "tetsuocode.fix", "title": "Fix Diagnostics", "category": "tetsuocode" },
+      { "command": "tetsuocode.tests", "title": "Write Tests for Selection", "category": "tetsuocode" },
+      { "command": "tetsuocode.ask", "title": "Ask a Question", "category": "tetsuocode" },
+      { "command": "tetsuocode.reset", "title": "Reset Chat", "category": "tetsuocode" }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "tetsuocode.explain", "group": "tetsuocode@1", "when": "editorHasSelection" },
+        { "command": "tetsuocode.refactor", "group": "tetsuocode@2", "when": "editorHasSelection" },
+        { "command": "tetsuocode.tests", "group": "tetsuocode@3", "when": "editorHasSelection" },
+        { "command": "tetsuocode.fix", "group": "tetsuocode@4" }
+      ]
+    },
+    "keybindings": [
+      { "command": "tetsuocode.toggle", "key": "ctrl+shift+t", "mac": "cmd+shift+t" },
+      { "command": "tetsuocode.ask", "key": "ctrl+shift+a", "mac": "cmd+shift+a" }
+    ],
+    "configuration": {
+      "title": "tetsuocode",
+      "properties": {
+        "tetsuocode.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "xAI API key (or set XAI_API_KEY env var)",
+          "order": 0
+        },
+        "tetsuocode.model": {
+          "type": "string",
+          "default": "grok-4-1-fast-reasoning",
+          "enum": [
+            "grok-4-1-fast-reasoning",
+            "grok-3-fast",
+            "grok-3",
+            "grok-3-mini"
+          ],
+          "description": "Grok model to use",
+          "order": 1
+        },
+        "tetsuocode.temperature": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Model temperature (0 = deterministic, 2 = creative)",
+          "order": 2
+        },
+        "tetsuocode.maxTokens": {
+          "type": "number",
+          "default": 4096,
+          "description": "Maximum response tokens",
+          "order": 3
+        },
+        "tetsuocode.systemPrompt": {
+          "type": "string",
+          "default": "",
+          "description": "Custom system prompt (optional)",
+          "order": 4
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "vsce": "^2.15.0"
+  }
+}

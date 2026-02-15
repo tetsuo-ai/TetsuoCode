@@ -28,6 +28,8 @@ Download the latest release for your platform:
 
 [Download from Releases](https://github.com/tetsuo-ai/tetsuo-code/releases/latest)
 
+**Requires:** Python 3.10+ installed on your system ([download](https://python.org/downloads)). Works with Python 3.10, 3.11, 3.12, 3.13, and newer.
+
 Set your API key in Settings (gear icon) after launching.
 
 ### pip Install
@@ -59,6 +61,21 @@ No Python required. Download the single-file executable:
 export XAI_API_KEY="xai-..."
 ./tetsuocode-linux              # or tetsuocode-windows.exe
 ```
+
+### VS Code Extension
+
+Install from the marketplace or build from source:
+
+```bash
+cd vscode
+npm install
+npx vsce package
+# Install the .vsix: Ctrl+Shift+P → "Install from VSIX"
+```
+
+Set your API key in VS Code settings: `tetsuocode.apiKey`
+
+Features: sidebar chat panel, right-click context menu (Explain, Refactor, Write Tests, Fix Diagnostics), streaming responses, tool calls, Ctrl+Shift+T to toggle, Ctrl+Shift+A to ask.
 
 ### From Source (Development)
 
