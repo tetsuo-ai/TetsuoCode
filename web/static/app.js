@@ -18,6 +18,11 @@ let chats = {};
 let autoScroll = true;
 let pinnedMessages = [];
 let editorTabs = []; // [{path, content, original, active}]
+let splitMode = false;
+let splitTab = null; // second tab for split view
+let selectedFiles = new Set();
+let trash = []; // deleted chats
+let mentionSearch = null; // active mention search state
 let settings = { temperature: 0.7, max_tokens: 4096, system_prompt: "", provider: "xai", api_key: "", sound: false, autoContext: false };
 
 const SYSTEM_PRESETS = {
@@ -53,16 +58,24 @@ marked.setOptions({
   breaks: true,
 });
 
-inputEl.addEventListener("input", () => { inputEl.style.height = "auto"; inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + "px"; });
-inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } if (e.key === "Escape" && streaming) cancelStream(); });
+inputEl.addEventListener("input", () => { inputEl.style.height = "auto"; inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + "px"; checkMentions(); });
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (mentionSearch !== null) { selectMention(); return; } sendMessage(); }
+  if (e.key === "Escape") { if (mentionSearch !== null) { hideMentionDropdown(); return; } if (streaming) cancelStream(); }
+  if (e.key === "ArrowDown" && mentionSearch !== null) { e.preventDefault(); navigateMention(1); }
+  if (e.key === "ArrowUp" && mentionSearch !== null) { e.preventDefault(); navigateMention(-1); }
+  if (e.key === "Tab" && mentionSearch !== null) { e.preventDefault(); selectMention(); }
+});
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { if (streaming) cancelStream(); else if (!document.getElementById("searchOverlay").classList.contains("hidden")) closeSearch(); else if (!document.getElementById("paletteOverlay").classList.contains("hidden")) closePalette(); }
+  if (e.key === "Escape") { if (streaming) cancelStream(); else if (!document.getElementById("searchOverlay").classList.contains("hidden")) closeSearch(); else if (!document.getElementById("paletteOverlay").classList.contains("hidden")) closePalette(); else if (!document.getElementById("quickOpenOverlay").classList.contains("hidden")) closeQuickOpen(); }
   if (e.key === "n" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!streaming) newChat(); }
   if (e.key === "," && (e.ctrlKey || e.metaKey)) { e.preventDefault(); toggleSettings(); }
   if (e.key === "f" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openSearch(); }
   if (e.key === "k" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openPalette(); }
+  if (e.key === "p" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openQuickOpen(); }
   if (e.key === "`" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); toggleTerminal(); }
+  if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey && document.activeElement !== inputEl && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); undoLastEdit(); }
 });
 
 messagesEl.addEventListener("scroll", () => { const {scrollTop,scrollHeight,clientHeight}=messagesEl; autoScroll=scrollHeight-scrollTop-clientHeight<60; });
@@ -82,12 +95,13 @@ async function submitLogin() {
 document.getElementById("loginPassword").addEventListener("keydown",(e)=>{if(e.key==="Enter")submitLogin()});
 
 // ── Persistence ──────────────────────────────
-function saveState() { if (!currentChatId) return; chats[currentChatId]={title:chatTitleEl.textContent,messages,tokens:totalTokens,pinned:pinnedMessages}; try{localStorage.setItem("tetsuocode_chats",JSON.stringify(chats));localStorage.setItem("tetsuocode_current",currentChatId)}catch(e){} }
+function saveState() { if (!currentChatId) return; chats[currentChatId]={title:chatTitleEl.textContent,messages,tokens:totalTokens,pinned:pinnedMessages,forkedFrom:chats[currentChatId]?.forkedFrom||null}; try{localStorage.setItem("tetsuocode_chats",JSON.stringify(chats));localStorage.setItem("tetsuocode_current",currentChatId)}catch(e){} }
 function loadSettings() { try{const s=localStorage.getItem("tetsuocode_settings");if(s)settings={...settings,...JSON.parse(s)}}catch(e){} }
 function saveSettings() { try{localStorage.setItem("tetsuocode_settings",JSON.stringify(settings))}catch(e){} }
 
 function loadState() {
   loadSettings();
+  loadTrash();
   populateModels();
   try { const saved=localStorage.getItem("tetsuocode_chats"); const current=localStorage.getItem("tetsuocode_current");
     if(saved){chats=JSON.parse(saved);renderChatHistory();if(current&&chats[current]){loadChat(current);return;}} } catch(e){}
@@ -103,20 +117,54 @@ function populateModels() {
 function renderChatHistory() {
   chatHistoryEl.innerHTML="";
   const ids=Object.keys(chats).sort((a,b)=>Number(b)-Number(a));
-  for(const id of ids){const c=chats[id];const item=document.createElement("div");item.className="chat-item"+(id===currentChatId?" active":"");item.textContent=c.title||"new chat";
-    const del=document.createElement("button");del.className="chat-delete";del.innerHTML="&times;";del.onclick=(e)=>{e.stopPropagation();deleteChat(id)};item.appendChild(del);
+  for(const id of ids){const c=chats[id];const item=document.createElement("div");item.className="chat-item"+(id===currentChatId?" active":"");
+    const label = c.forkedFrom ? "&#9095; " : "";
+    item.innerHTML=`<span>${label}${escapeHtml(c.title||"new chat")}</span>`;
+    const actions=document.createElement("div");actions.className="chat-item-actions";
+    const fork=document.createElement("button");fork.className="chat-action-btn";fork.innerHTML="&#9095;";fork.title="Fork";fork.onclick=(e)=>{e.stopPropagation();forkChat(id)};
+    const del=document.createElement("button");del.className="chat-delete";del.innerHTML="&times;";del.onclick=(e)=>{e.stopPropagation();deleteChat(id)};
+    actions.appendChild(fork);actions.appendChild(del);item.appendChild(actions);
     item.onclick=()=>{if(streaming)return;saveState();loadChat(id)};chatHistoryEl.appendChild(item);}
+  renderTrash();
 }
 
 function loadChat(id) {
   const c=chats[id]; if(!c)return; currentChatId=id; messages=c.messages||[]; totalTokens=c.tokens||{prompt:0,completion:0,total:0}; pinnedMessages=c.pinned||[];
   chatTitleEl.textContent=c.title||"new chat"; updateTokenDisplay();
-  messagesEl.innerHTML=""; if(!messages.length)showWelcome(); else for(const m of messages){if(m.role==="user"||m.role==="assistant")addMessage(m.role,m.content,true,m.timestamp)}
+  messagesEl.innerHTML=""; if(!messages.length)showWelcome(); else for(let i=0;i<messages.length;i++){const m=messages[i];if(m.role==="user"||m.role==="assistant")addMessage(m.role,m.content,true,m.timestamp,i)}
   renderPinned(); renderChatHistory(); inputEl.focus();
 }
-function deleteChat(id){delete chats[id];try{localStorage.setItem("tetsuocode_chats",JSON.stringify(chats))}catch(e){}if(id===currentChatId){const r=Object.keys(chats);r.length?loadChat(r.sort((a,b)=>Number(b)-Number(a))[0]):newChat()}else renderChatHistory()}
+
+function deleteChat(id){
+  // Move to trash instead of permanently deleting
+  const chat = chats[id];
+  if (chat) { trash.push({id, ...chat, deletedAt: Date.now()}); saveTrash(); }
+  delete chats[id];try{localStorage.setItem("tetsuocode_chats",JSON.stringify(chats))}catch(e){}
+  if(id===currentChatId){const r=Object.keys(chats);r.length?loadChat(r.sort((a,b)=>Number(b)-Number(a))[0]):newChat()}else renderChatHistory()
+}
+
 function newChat(){if(currentChatId&&messages.length)saveState();messages=[];totalTokens={prompt:0,completion:0,total:0};pinnedMessages=[];currentChatId=Date.now().toString();chatTitleEl.textContent="new chat";tokenCountEl.textContent="";document.getElementById("tokenCost").textContent="";messagesEl.innerHTML="";showWelcome();renderChatHistory();updateContextBar();inputEl.focus()}
 function showWelcome(){messagesEl.innerHTML=`<div class="welcome"><h1>tetsuocode</h1><p>ai coding assistant powered by grok</p><div class="welcome-hints"><div class="hint" onclick="insertPrompt('explain this codebase')">explain this codebase</div><div class="hint" onclick="insertPrompt('find and fix bugs')">find and fix bugs</div><div class="hint" onclick="insertPrompt('write tests for this project')">write tests</div><div class="hint" onclick="insertPrompt('refactor for performance')">refactor for performance</div></div></div>`}
+
+// ── Trash / Recovery ──────────────────────────
+function loadTrash() { try { trash = JSON.parse(localStorage.getItem("tetsuocode_trash") || "[]"); } catch(e) { trash = []; } }
+function saveTrash() { try { localStorage.setItem("tetsuocode_trash", JSON.stringify(trash.slice(-50))); } catch(e) {} }
+function renderTrash() {
+  const section = document.getElementById("trashSection");
+  const list = document.getElementById("trashList");
+  const count = document.getElementById("trashCount");
+  if (!trash.length) { section.classList.add("hidden"); return; }
+  section.classList.remove("hidden");
+  count.textContent = `(${trash.length})`;
+  list.innerHTML = trash.slice().reverse().map((t,i) => {
+    const ri = trash.length - 1 - i;
+    return `<div class="trash-item"><span>${escapeHtml(t.title||"untitled")}</span><div class="trash-item-actions"><button onclick="restoreFromTrash(${ri})" title="Restore">&#8634;</button><button onclick="permanentDelete(${ri})" title="Delete">&times;</button></div></div>`;
+  }).join("");
+}
+function toggleTrashList() { document.getElementById("trashList").classList.toggle("hidden"); }
+function restoreFromTrash(i) { const t = trash.splice(i, 1)[0]; if (!t) return; const id = t.id || Date.now().toString(); delete t.deletedAt; delete t.id; chats[id] = t; try{localStorage.setItem("tetsuocode_chats",JSON.stringify(chats))}catch(e){} saveTrash(); renderChatHistory(); }
+function permanentDelete(i) { trash.splice(i, 1); saveTrash(); renderTrash(); }
+function emptyTrash() { trash = []; saveTrash(); renderTrash(); }
 
 // ── Token Cost & Context ──────────────────────
 function updateTokenDisplay() {
@@ -164,17 +212,22 @@ function doSearch(q){messagesEl.querySelectorAll(".search-highlight").forEach(el
 // ── Command Palette ──────────────────────
 const PALETTE_COMMANDS = [
   {name:"New Chat",key:"Ctrl+N",action:()=>newChat()},
+  {name:"Open File",key:"Ctrl+P",action:()=>openQuickOpen()},
   {name:"Search Messages",key:"Ctrl+F",action:()=>openSearch()},
   {name:"Settings",key:"Ctrl+,",action:()=>toggleSettings()},
   {name:"Toggle Terminal",key:"Ctrl+`",action:()=>toggleTerminal()},
   {name:"Toggle Files",action:()=>switchTab("files")},
   {name:"Toggle Git",action:()=>switchTab("git")},
   {name:"Toggle Theme",action:()=>toggleTheme()},
+  {name:"Toggle Split Editor",action:()=>toggleSplitEditor()},
+  {name:"Undo Last Edit",key:"Ctrl+Z",action:()=>undoLastEdit()},
+  {name:"Fork Chat",action:()=>forkCurrentChat()},
   {name:"Export JSON",action:()=>exportChats()},
   {name:"Export Markdown",action:()=>exportMarkdown()},
   {name:"Summarize Chat",action:()=>summarizeChat()},
   {name:"Change Workspace",action:()=>changeWorkspace()},
   {name:"Clear Terminal",action:()=>clearTerminal()},
+  {name:"Empty Trash",action:()=>emptyTrash()},
 ];
 function openPalette(){document.getElementById("paletteOverlay").classList.remove("hidden");document.getElementById("paletteInput").value="";filterPalette("");document.getElementById("paletteInput").focus()}
 function closePalette(){document.getElementById("paletteOverlay").classList.add("hidden")}
@@ -186,13 +239,120 @@ document.getElementById("paletteInput").addEventListener("keydown",(e)=>{
   if(e.key==="Enter"){e.preventDefault();if(active)active.click()}
 });
 
+// ── Quick Open (Ctrl+P) ──────────────────────
+let quickOpenDebounce = null;
+function openQuickOpen(){document.getElementById("quickOpenOverlay").classList.remove("hidden");document.getElementById("quickOpenInput").value="";document.getElementById("quickOpenList").innerHTML='<div class="quickopen-hint">start typing to search files...</div>';document.getElementById("quickOpenInput").focus()}
+function closeQuickOpen(){document.getElementById("quickOpenOverlay").classList.add("hidden")}
+function searchFilesQuick(q){
+  clearTimeout(quickOpenDebounce);
+  if(!q.trim()){document.getElementById("quickOpenList").innerHTML='<div class="quickopen-hint">start typing to search files...</div>';return}
+  quickOpenDebounce=setTimeout(async()=>{
+    try{const r=await fetch(`/api/files/search?q=${encodeURIComponent(q)}`);const d=await r.json();
+      const list=document.getElementById("quickOpenList");
+      if(!d.files.length){list.innerHTML='<div class="quickopen-hint">no files found</div>';return}
+      list.innerHTML=d.files.map((f,i)=>`<div class="quickopen-item${i===0?" active":""}" onclick="quickOpenFile('${f.path.replace(/'/g,"\\'")}')" onmouseenter="this.parentElement.querySelectorAll('.active').forEach(e=>e.classList.remove('active'));this.classList.add('active')"><span class="quickopen-name">${escapeHtml(f.name)}</span><span class="quickopen-path">${escapeHtml(f.rel)}</span></div>`).join("")
+    }catch(e){}
+  },150);
+}
+function quickOpenFile(path){closeQuickOpen();openInEditor(path)}
+document.getElementById("quickOpenInput").addEventListener("keydown",(e)=>{
+  const items=document.querySelectorAll(".quickopen-item");const active=document.querySelector(".quickopen-item.active");
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();if(!active||!items.length)return;const idx=[...items].indexOf(active);const next=e.key==="ArrowDown"?Math.min(idx+1,items.length-1):Math.max(idx-1,0);active.classList.remove("active");items[next].classList.add("active");items[next].scrollIntoView({block:"nearest"})}
+  if(e.key==="Enter"){e.preventDefault();if(active)active.click()}
+});
+
+// ── @ Mentions ──────────────────────────
+let mentionDebounce = null;
+function checkMentions() {
+  const val = inputEl.value;
+  const pos = inputEl.selectionStart;
+  // Find @ before cursor
+  const before = val.slice(0, pos);
+  const atIdx = before.lastIndexOf("@");
+  if (atIdx === -1 || (atIdx > 0 && before[atIdx-1] !== " " && before[atIdx-1] !== "\n")) { hideMentionDropdown(); return; }
+  const query = before.slice(atIdx + 1);
+  if (query.includes(" ") || query.length > 40) { hideMentionDropdown(); return; }
+  mentionSearch = { atIdx, query };
+  clearTimeout(mentionDebounce);
+  mentionDebounce = setTimeout(() => fetchMentions(query), 150);
+}
+async function fetchMentions(q) {
+  try {
+    const r = await fetch(`/api/files/search?q=${encodeURIComponent(q)}`);
+    const d = await r.json();
+    showMentionDropdown(d.files.slice(0, 8));
+  } catch(e) { hideMentionDropdown(); }
+}
+function showMentionDropdown(files) {
+  const dd = document.getElementById("mentionDropdown");
+  if (!files.length) { hideMentionDropdown(); return; }
+  dd.classList.remove("hidden");
+  dd.innerHTML = files.map((f, i) => `<div class="mention-item${i===0?" active":""}" onmousedown="insertMention('${f.path.replace(/'/g,"\\'")}')" onmouseenter="this.parentElement.querySelectorAll('.active').forEach(e=>e.classList.remove('active'));this.classList.add('active')"><span class="mention-name">${escapeHtml(f.name)}</span><span class="mention-path">${escapeHtml(f.rel)}</span></div>`).join("");
+}
+function hideMentionDropdown() { mentionSearch = null; document.getElementById("mentionDropdown").classList.add("hidden"); }
+function navigateMention(dir) {
+  const items = document.querySelectorAll(".mention-item");
+  const active = document.querySelector(".mention-item.active");
+  if (!active || !items.length) return;
+  const idx = [...items].indexOf(active);
+  const next = dir > 0 ? Math.min(idx + 1, items.length - 1) : Math.max(idx - 1, 0);
+  active.classList.remove("active"); items[next].classList.add("active");
+}
+function selectMention() {
+  const active = document.querySelector(".mention-item.active");
+  if (active) active.dispatchEvent(new Event("mousedown"));
+}
+function insertMention(path) {
+  if (!mentionSearch) return;
+  const val = inputEl.value;
+  const before = val.slice(0, mentionSearch.atIdx);
+  const after = val.slice(inputEl.selectionStart);
+  inputEl.value = before + "@" + path + " " + after;
+  inputEl.selectionStart = inputEl.selectionEnd = before.length + 1 + path.length + 1;
+  hideMentionDropdown();
+  inputEl.focus();
+}
+
 // ── File Browser ──────────────────────────
 function switchTab(tab){["chats","files","git"].forEach(t=>{document.getElementById("tab"+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle("active",t===tab);document.getElementById("panel"+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle("hidden",t!==tab)});if(tab==="files")loadFileTree();if(tab==="git")loadGitStatus()}
 async function loadFileTree(path){try{const url=path?`/api/files/list?path=${encodeURIComponent(path)}`:"/api/files/list";const r=await fetch(url);const d=await r.json();document.getElementById("workspacePath").textContent=d.path;if(!path){const tree=document.getElementById("fileTree");tree.innerHTML="";renderFileEntries(d.entries,tree,0)}return d}catch(e){}}
-function renderFileEntries(entries,container,depth){for(const e of entries){const item=document.createElement("div");item.className="file-item"+(e.type==="dir"?" dir":"");item.style.paddingLeft=(12+depth*16)+"px";item.innerHTML=`<span class="file-icon">${e.type==="dir"?"&#9656;":"&#9671;"}</span><span class="file-name">${escapeHtml(e.name)}</span>`;
+function renderFileEntries(entries,container,depth){for(const e of entries){const item=document.createElement("div");item.className="file-item"+(e.type==="dir"?" dir":"");item.style.paddingLeft=(12+depth*16)+"px";item.setAttribute("tabindex","0");item.setAttribute("data-path",e.path);
+  const selectBox = e.type==="file" ? `<input type="checkbox" class="file-checkbox" onclick="event.stopPropagation();toggleFileSelect('${e.path.replace(/'/g,"\\'")}',this)" ${selectedFiles.has(e.path)?"checked":""}> ` : "";
+  item.innerHTML=`${selectBox}<span class="file-icon">${e.type==="dir"?"&#9656;":"&#9671;"}</span><span class="file-name">${escapeHtml(e.name)}</span>`;
   if(e.type==="dir"){let loaded=false;const ch=document.createElement("div");ch.className="file-children hidden";item.onclick=async(ev)=>{ev.stopPropagation();if(!loaded){const d=await loadFileTree(e.path);if(d&&d.entries)renderFileEntries(d.entries,ch,depth+1);loaded=true}ch.classList.toggle("hidden");item.querySelector(".file-icon").innerHTML=ch.classList.contains("hidden")?"&#9656;":"&#9662;"};container.appendChild(item);container.appendChild(ch)}
-  else{item.onclick=()=>openInEditor(e.path);container.appendChild(item)}}}
+  else{item.onclick=()=>openInEditor(e.path);container.appendChild(item)}
+  // Keyboard nav for file tree
+  item.addEventListener("keydown",(ev)=>{
+    if(ev.key==="j"||ev.key==="ArrowDown"){ev.preventDefault();const next=item.nextElementSibling;if(next&&next.classList.contains("file-item"))next.focus();else if(next&&next.nextElementSibling)next.nextElementSibling.focus()}
+    if(ev.key==="k"||ev.key==="ArrowUp"){ev.preventDefault();const prev=item.previousElementSibling;if(prev&&prev.classList.contains("file-item"))prev.focus();else if(prev&&prev.previousElementSibling&&prev.previousElementSibling.classList.contains("file-item"))prev.previousElementSibling.focus()}
+    if(ev.key==="Enter"){ev.preventDefault();item.click()}
+  });
+}}
 async function changeWorkspace(){const p=prompt("Enter workspace path:");if(!p)return;try{const r=await fetch("/api/workspace",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:p})});const d=await r.json();if(d.workspace)loadFileTree();else alert(d.error||"Failed")}catch(e){alert("Failed")}}
+
+// ── Multi-file Selection ──────────────────────
+function toggleFileSelect(path, checkbox) {
+  if (checkbox.checked) selectedFiles.add(path); else selectedFiles.delete(path);
+  updateFileSelectBar();
+}
+function updateFileSelectBar() {
+  const bar = document.getElementById("fileSelectBar");
+  const count = document.getElementById("fileSelectCount");
+  if (selectedFiles.size > 0) { bar.classList.remove("hidden"); count.textContent = `${selectedFiles.size} selected`; }
+  else bar.classList.add("hidden");
+}
+function clearFileSelection() { selectedFiles.clear(); document.querySelectorAll(".file-checkbox").forEach(cb => cb.checked = false); updateFileSelectBar(); }
+async function attachSelectedFiles() {
+  if (!selectedFiles.size) return;
+  let ctx = "";
+  for (const path of [...selectedFiles].slice(0, 5)) {
+    try { const r = await fetch(`/api/files/read?path=${encodeURIComponent(path)}`); const d = await r.json();
+      if (d.content) ctx += `\n\`\`\`\n// ${path.split("/").pop()}\n${d.content.slice(0, 5000)}\n\`\`\`\n`;
+    } catch(e) {}
+  }
+  if (ctx) { inputEl.value += ctx; inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + "px"; inputEl.focus(); }
+  clearFileSelection();
+}
 
 // ── Editor ──────────────────────────────
 async function openInEditor(path){
@@ -206,12 +366,39 @@ function renderEditorTabs(){
   const tabs=document.getElementById("editorTabs");
   tabs.innerHTML=editorTabs.map((t,i)=>{const name=t.path.split("/").pop().split("\\").pop();const modified=t.content!==t.original?"*":"";return`<div class="editor-tab${t.active?" active":""}" onclick="activateTab(${i})"><span>${escapeHtml(name)}${modified}</span><button class="editor-tab-close" onclick="event.stopPropagation();closeTab(${i})">&times;</button></div>`}).join("");
   const active=editorTabs.find(t=>t.active);const ed=document.getElementById("editorContent");
-  if(active){ed.value=active.content;ed.oninput=()=>{active.content=ed.value;renderEditorTabs()}}
+  if(active){ed.value=active.content;ed.oninput=()=>{active.content=ed.value;renderEditorTabs();updateMinimap()};updateMinimap()}
+  // Split view
+  const splitEl = document.getElementById("editorContentSplit");
+  if (splitMode && splitTab) { splitEl.classList.remove("hidden"); splitEl.value = splitTab.content; splitEl.oninput = () => { splitTab.content = splitEl.value; renderEditorTabs(); }; }
+  else { splitEl.classList.add("hidden"); }
 }
 function activateTab(i){editorTabs.forEach(t=>t.active=false);editorTabs[i].active=true;renderEditorTabs()}
 function closeTab(i){editorTabs.splice(i,1);if(editorTabs.length===0){document.getElementById("editorPanel").classList.add("hidden");return}if(!editorTabs.some(t=>t.active))editorTabs[Math.min(i,editorTabs.length-1)].active=true;renderEditorTabs()}
-function closeEditor(){editorTabs=[];document.getElementById("editorPanel").classList.add("hidden")}
+function closeEditor(){editorTabs=[];splitMode=false;splitTab=null;document.getElementById("editorPanel").classList.add("hidden")}
 async function saveCurrentTab(){const active=editorTabs.find(t=>t.active);if(!active)return;try{const r=await fetch("/api/files/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:active.path,content:active.content})});const d=await r.json();if(d.success){active.original=active.content;renderEditorTabs()}}catch(e){alert("Save failed")}}
+
+// ── Split Editor ──────────────────────────
+function toggleSplitEditor() {
+  splitMode = !splitMode;
+  if (splitMode && editorTabs.length >= 2) {
+    const active = editorTabs.find(t => t.active);
+    splitTab = editorTabs.find(t => !t.active) || editorTabs[1];
+  } else if (splitMode) {
+    splitMode = false;
+  } else {
+    splitTab = null;
+  }
+  renderEditorTabs();
+}
+
+// ── Minimap ──────────────────────────────
+function updateMinimap() {
+  const mm = document.getElementById("editorMinimap");
+  const active = editorTabs.find(t => t.active);
+  if (!active || !mm) return;
+  const lines = active.content.split("\n").slice(0, 200);
+  mm.innerHTML = lines.map(l => `<div class="minimap-line">${escapeHtml(l.slice(0, 80))}</div>`).join("");
+}
 
 // ── Git ──────────────────────────────
 async function loadGitStatus(){
@@ -228,7 +415,23 @@ async function gitPush(){try{const r=await fetch("/api/git/push",{method:"POST",
 function toggleTerminal(){document.getElementById("terminalPanel").classList.toggle("hidden");if(!document.getElementById("terminalPanel").classList.contains("hidden"))document.getElementById("terminalInput").focus()}
 function clearTerminal(){document.getElementById("terminalOutput").innerHTML=""}
 async function runTerminal(){const inp=document.getElementById("terminalInput");const cmd=inp.value.trim();if(!cmd)return;const out=document.getElementById("terminalOutput");out.innerHTML+=`<div class="term-cmd">$ ${escapeHtml(cmd)}</div>`;inp.value="";
-  try{const r=await fetch("/api/terminal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({command:cmd})});const d=await r.json();out.innerHTML+=`<div class="term-out${d.exit_code?' term-err':''}">${escapeHtml(d.output)}</div>`;out.scrollTop=out.scrollHeight}catch(e){out.innerHTML+=`<div class="term-out term-err">Error: ${escapeHtml(e.message)}</div>`}}
+  try{const r=await fetch("/api/terminal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({command:cmd})});const d=await r.json();
+    out.innerHTML+=`<div class="term-out${d.exit_code?' term-err':''}">${formatTerminalOutput(d.output)}</div>`;out.scrollTop=out.scrollHeight}catch(e){out.innerHTML+=`<div class="term-out term-err">Error: ${escapeHtml(e.message)}</div>`}}
+
+// ── Test Result Formatting ──────────────────
+function formatTerminalOutput(text) {
+  if (!text) return "";
+  // Detect test output patterns
+  const isTestOutput = /(?:PASSED|FAILED|ERROR|OK|test[_\s]|pytest|jest|mocha|rspec)/i.test(text);
+  if (!isTestOutput) return escapeHtml(text);
+  return escapeHtml(text)
+    .replace(/(PASSED|PASS|OK|SUCCESS|\u2713|passed)/gi, '<span class="test-pass">$1</span>')
+    .replace(/(FAILED|FAIL|ERROR|ERRORS|\u2717|failed)/gi, '<span class="test-fail">$1</span>')
+    .replace(/(WARNING|WARN|SKIP|SKIPPED)/gi, '<span class="test-warn">$1</span>')
+    .replace(/(\d+ passed)/gi, '<span class="test-pass">$1</span>')
+    .replace(/(\d+ failed)/gi, '<span class="test-fail">$1</span>')
+    .replace(/(\d+ error)/gi, '<span class="test-fail">$1</span>');
+}
 
 // ── Pinned Messages ──────────────────────
 function pinMessage(){const last=messages.filter(m=>m.role==="assistant").pop();if(!last)return;pinnedMessages.push({content:last.content.slice(0,200),timestamp:Date.now()});renderPinned();saveState()}
@@ -241,10 +444,62 @@ async function summarizeChat(){if(messages.length<4||streaming)return;streaming=
     const reader=r.body.getReader();const decoder=new TextDecoder();let summary="",buffer="";
     while(true){const{done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop();for(const line of lines){if(!line.startsWith("data: "))continue;try{const d=JSON.parse(line.slice(6));if(d.type==="content")summary+=d.content}catch(e){}}}
     if(summary){messages=[{role:"system",content:`Previous conversation summary: ${summary}`},{role:"assistant",content:`**Conversation summarized.** Here's what we covered:\n\n${summary}`,timestamp:Date.now()}];
-      messagesEl.innerHTML="";addMessage("assistant",messages[1].content,false,messages[1].timestamp);saveState()}}catch(e){}streaming=false}
+      messagesEl.innerHTML="";addMessage("assistant",messages[1].content,false,messages[1].timestamp,1);saveState()}}catch(e){}streaming=false}
+
+// ── Conversation Forking ──────────────────────
+function forkFromMessage(index) {
+  if (streaming) return;
+  saveState();
+  const forkedMessages = messages.slice(0, index + 1);
+  const newId = Date.now().toString();
+  const title = (chatTitleEl.textContent || "new chat") + " (fork)";
+  chats[newId] = { title, messages: JSON.parse(JSON.stringify(forkedMessages)), tokens: {...totalTokens}, pinned: [], forkedFrom: currentChatId };
+  try { localStorage.setItem("tetsuocode_chats", JSON.stringify(chats)); } catch(e) {}
+  loadChat(newId);
+}
+function forkChat(chatId) {
+  const chat = chats[chatId];
+  if (!chat) return;
+  const newId = Date.now().toString();
+  chats[newId] = { title: (chat.title||"chat") + " (fork)", messages: JSON.parse(JSON.stringify(chat.messages||[])), tokens: {...(chat.tokens||{prompt:0,completion:0,total:0})}, pinned: [], forkedFrom: chatId };
+  try { localStorage.setItem("tetsuocode_chats", JSON.stringify(chats)); } catch(e) {}
+  loadChat(newId);
+}
+function forkCurrentChat() { if (messages.length) forkFromMessage(messages.length - 1); }
+
+// ── Undo Last Edit ──────────────────────────
+async function undoLastEdit() {
+  try {
+    const r = await fetch("/api/files/undo", { method: "POST" });
+    const d = await r.json();
+    if (d.success) {
+      // Show notification
+      const notif = document.createElement("div");
+      notif.className = "undo-notification";
+      notif.textContent = d.action;
+      document.body.appendChild(notif);
+      setTimeout(() => notif.remove(), 3000);
+      // Refresh editor if file is open
+      const tab = editorTabs.find(t => t.path === d.path);
+      if (tab) {
+        try { const r2 = await fetch(`/api/files/read?path=${encodeURIComponent(d.path)}`); const d2 = await r2.json(); if (d2.content !== undefined) { tab.content = d2.content; tab.original = d2.content; renderEditorTabs(); } } catch(e) {}
+      }
+    } else {
+      const notif = document.createElement("div");
+      notif.className = "undo-notification undo-error";
+      notif.textContent = d.error || "Nothing to undo";
+      document.body.appendChild(notif);
+      setTimeout(() => notif.remove(), 3000);
+    }
+  } catch(e) {}
+}
 
 // ── Auto Context ──────────────────────────
-function detectFilePaths(text){const paths=new Set();const patterns=[/(?:^|\s)((?:\.\/|\.\.\/|\/|[a-zA-Z]:\\)[\w\-./\\]+\.\w+)/g,/(?:^|\s)([\w\-]+\.(?:py|js|ts|tsx|jsx|rs|go|java|rb|php|c|cpp|h|lua|css|html|json|yaml|yml|toml|sh))/g];for(const p of patterns){let m;while((m=p.exec(text))!==null)paths.add(m[1].trim())}return[...paths]}
+function detectFilePaths(text){const paths=new Set();const patterns=[/(?:^|\s)((?:\.\/|\.\.\/|\/|[a-zA-Z]:\\)[\w\-./\\]+\.\w+)/g,/(?:^|\s)([\w\-]+\.(?:py|js|ts|tsx|jsx|rs|go|java|rb|php|c|cpp|h|lua|css|html|json|yaml|yml|toml|sh))/g];for(const p of patterns){let m;while((m=p.exec(text))!==null)paths.add(m[1].trim())}
+  // Also extract @mentioned file paths
+  const mentionPattern = /@([\w\-./\\:]+\.\w+)/g;
+  let mm; while((mm=mentionPattern.exec(text))!==null) paths.add(mm[1]);
+  return[...paths]}
 async function attachContext(text){if(!settings.autoContext)return text;const paths=detectFilePaths(text);if(!paths.length)return text;let ctx="";for(const p of paths.slice(0,3)){try{const r=await fetch(`/api/files/read?path=${encodeURIComponent(p)}`);const d=await r.json();if(d.content)ctx+=`\n\nContents of ${p}:\n\`\`\`\n${d.content.slice(0,5000)}\n\`\`\`\n`}catch(e){}}return ctx?text+"\n\n[Auto-attached context:]"+ctx:text}
 
 // ── Rendering ──────────────────────────────
@@ -257,9 +512,11 @@ function renderMarkdown(text){let html;try{html=marked.parse(text)}catch(e){html
 function copyCode(btn){const c=btn.closest("pre").querySelector("code").textContent;navigator.clipboard.writeText(c).then(()=>{btn.textContent="copied";setTimeout(()=>btn.textContent="copy",2000)})}
 function copyMessage(btn){navigator.clipboard.writeText(btn.closest(".message").querySelector(".message-body").innerText).then(()=>{btn.textContent="copied";setTimeout(()=>btn.textContent="copy",2000)})}
 
-function addMessage(role,content,silent,timestamp){
+function addMessage(role,content,silent,timestamp,msgIndex){
   const w=messagesEl.querySelector(".welcome");if(w)w.remove();const div=document.createElement("div");div.className=`message ${role}`;const time=formatTime(timestamp||Date.now());
-  const actions=role==="assistant"?`<div class="message-actions"><button class="msg-action-btn" onclick="copyMessage(this)">copy</button><button class="msg-action-btn" onclick="regenerate()">retry</button></div>`:"";
+  const idx = msgIndex !== undefined ? msgIndex : messages.length - 1;
+  const forkBtn = `<button class="msg-action-btn" onclick="forkFromMessage(${idx})" title="Fork from here">fork</button>`;
+  const actions=role==="assistant"?`<div class="message-actions"><button class="msg-action-btn" onclick="copyMessage(this)">copy</button><button class="msg-action-btn" onclick="regenerate()">retry</button>${forkBtn}</div>`:`<div class="message-actions">${forkBtn}</div>`;
   div.innerHTML=`<div class="message-header"><span class="message-role">${role==="user"?"you":"tetsuo"}</span><span class="message-time">${time}</span>${actions}</div><div class="message-body">${role==="user"?escapeHtml(content).replace(/\n/g,"<br>"):renderMarkdown(content)}</div>`;
   div.querySelectorAll("code.line-numbers").forEach(c=>{if(!c.querySelector(".line-number"))c.innerHTML=addLineNumbers(c.innerHTML)});
   messagesEl.appendChild(div);if(!silent)scrollToBottom();return div}
@@ -278,7 +535,14 @@ function renderSideBySide(diff){const lines=diff.split("\n");let left=[],right=[
   const renderCol=(col)=>col.map(l=>`<div class="diff-line diff-${l.type}">${escapeHtml(l.text)}</div>`).join("");
   return`<div class="diff-col">${renderCol(left)}</div><div class="diff-col">${renderCol(right)}</div>`}
 
-function formatToolOutput(raw){try{const p=JSON.parse(raw);if(p.diff)return renderDiff(p.diff)+`<div class="diff-meta">${escapeHtml(p.path||"")}</div>`;if(p.image&&p.data)return`<img src="data:${p.mime};base64,${p.data}" style="max-width:100%;border-radius:4px">`;return escapeHtml(JSON.stringify(p,null,2))}catch(e){return escapeHtml(raw)}}
+function formatToolOutput(raw){
+  try{const p=JSON.parse(raw);
+    if(p.diff){
+      const revertBtn = p.path ? `<button class="revert-btn" onclick="undoLastEdit()">revert</button>` : "";
+      return renderDiff(p.diff)+`<div class="diff-meta">${escapeHtml(p.path||"")}${revertBtn}</div>`;
+    }
+    if(p.image&&p.data)return`<img src="data:${p.mime};base64,${p.data}" style="max-width:100%;border-radius:4px">`;
+    return escapeHtml(JSON.stringify(p,null,2))}catch(e){return escapeHtml(raw)}}
 
 function addToolCall(name,args){const sm=document.getElementById("streamingMessage");if(!sm)return;removeToolThinking();const b=sm.querySelector(".message-body");const div=document.createElement("div");div.className="tool-call";let preview=args;try{preview=JSON.stringify(JSON.parse(args),null,2)}catch(e){}if(preview.length>200)preview=preview.slice(0,200)+"...";
   div.innerHTML=`<div class="tool-call-header" onclick="this.parentElement.classList.toggle('collapsed')"><span class="tool-collapse-icon">&#9660;</span><span class="tool-name">${escapeHtml(name)}</span><span class="tool-status">running</span></div><div class="tool-call-body"><code>${escapeHtml(preview)}</code></div>`;b.appendChild(div);showToolThinking();scrollToBottom()}
@@ -289,7 +553,24 @@ function playNotification(){if(!settings.sound)return;try{const ctx=new(window.A
 // ── Chat ──────────────────────────────
 async function sendMessage(retryText){
   let text=retryText||inputEl.value.trim();if(!text||streaming)return;
-  if(!retryText){text=await attachContext(text);addMessage("user",text,false,Date.now());messages.push({role:"user",content:text,timestamp:Date.now()})}
+  // Handle @mentions - auto-attach mentioned files
+  const mentionedPaths = [];
+  const mentionRe = /@([\w\-./\\:]+\.\w+)/g;
+  let mm; while((mm=mentionRe.exec(text))!==null) mentionedPaths.push(mm[1]);
+  if(!retryText){
+    // Attach mentioned files
+    let contextText = text;
+    if (mentionedPaths.length) {
+      for (const p of mentionedPaths.slice(0, 5)) {
+        try { const r = await fetch(`/api/files/read?path=${encodeURIComponent(p)}`); const d = await r.json();
+          if (d.content) contextText += `\n\nContents of ${p}:\n\`\`\`\n${d.content.slice(0,5000)}\n\`\`\`\n`;
+        } catch(e) {}
+      }
+    }
+    contextText = await attachContext(contextText);
+    addMessage("user",text,false,Date.now(),messages.length);
+    messages.push({role:"user",content:contextText,timestamp:Date.now()});
+  }
   if(messages.filter(m=>m.role==="user").length===1)chatTitleEl.textContent=text.length>40?text.slice(0,40)+"...":text;
   inputEl.value="";inputEl.style.height="auto";streaming=true;sendBtn.classList.add("hidden");cancelBtn.classList.remove("hidden");
   const streamMsg=addThinking();const body=streamMsg.querySelector(".message-body");let fullContent="";let hadError=false;abortController=new AbortController();

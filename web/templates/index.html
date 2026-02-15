@@ -45,6 +45,14 @@
     </div>
   </div>
 
+  <!-- Quick Open -->
+  <div class="quickopen-overlay hidden" id="quickOpenOverlay" onclick="closeQuickOpen()">
+    <div class="quickopen-box" onclick="event.stopPropagation()">
+      <input type="text" id="quickOpenInput" placeholder="open file by name..." oninput="searchFilesQuick(this.value)">
+      <div class="quickopen-list" id="quickOpenList"></div>
+    </div>
+  </div>
+
   <!-- Search -->
   <div class="search-overlay hidden" id="searchOverlay">
     <div class="search-box">
@@ -80,6 +88,13 @@
           </button>
         </div>
         <div class="sidebar-chats" id="chatHistory"></div>
+        <div class="trash-section hidden" id="trashSection">
+          <div class="trash-header" onclick="toggleTrashList()">
+            <span>trash</span>
+            <span class="trash-count" id="trashCount"></span>
+          </div>
+          <div class="trash-list hidden" id="trashList"></div>
+        </div>
       </div>
 
       <!-- Files -->
@@ -87,6 +102,11 @@
         <div class="workspace-bar">
           <span id="workspacePath" class="workspace-path"></span>
           <button class="workspace-change" onclick="changeWorkspace()">...</button>
+        </div>
+        <div class="file-select-bar hidden" id="fileSelectBar">
+          <span id="fileSelectCount">0 selected</span>
+          <button class="file-select-btn" onclick="attachSelectedFiles()">attach</button>
+          <button class="file-select-btn" onclick="clearFileSelection()">clear</button>
         </div>
         <div class="file-tree" id="fileTree"></div>
       </div>
@@ -187,10 +207,15 @@
     <div class="editor-panel hidden" id="editorPanel">
       <div class="editor-tabs" id="editorTabs"></div>
       <div class="editor-toolbar">
+        <button class="editor-btn" onclick="toggleSplitEditor()">split</button>
         <button class="editor-btn" onclick="saveCurrentTab()">save</button>
         <button class="editor-btn" onclick="closeEditor()">&times;</button>
       </div>
-      <textarea class="editor-content" id="editorContent" spellcheck="false"></textarea>
+      <div class="editor-panes">
+        <textarea class="editor-content" id="editorContent" spellcheck="false"></textarea>
+        <textarea class="editor-content editor-split hidden" id="editorContentSplit" spellcheck="false"></textarea>
+      </div>
+      <div class="editor-minimap" id="editorMinimap"></div>
     </div>
 
     <!-- Main -->
@@ -201,6 +226,7 @@
         </button>
         <span class="chat-title" id="chatTitle">new chat</span>
         <div class="header-actions">
+          <button class="header-btn" onclick="undoLastEdit()" title="Undo last AI edit">undo</button>
           <button class="header-btn" onclick="pinMessage()" title="Pin last message">pin</button>
           <button class="header-btn" onclick="summarizeChat()" title="Summarize conversation">summarize</button>
           <button class="header-btn" onclick="toggleTerminal()" title="Toggle terminal">terminal</button>
@@ -250,7 +276,8 @@
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h12M2 6.5h8M2 10h10M2 13.5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           </button>
           <div class="template-menu hidden" id="templateMenu"></div>
-          <textarea id="messageInput" placeholder="ask tetsuo anything..." rows="1" autofocus></textarea>
+          <div class="mention-dropdown hidden" id="mentionDropdown"></div>
+          <textarea id="messageInput" placeholder="ask tetsuo anything... (@ to mention files)" rows="1" autofocus></textarea>
           <button class="send-btn" id="sendBtn" onclick="sendMessage()">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 13l10-5L3 3v4l6 1-6 1v4z" fill="currentColor"/></svg>
           </button>
@@ -258,7 +285,7 @@
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="3" width="10" height="10" rx="1" fill="currentColor"/></svg>
           </button>
         </div>
-        <div class="input-hint">enter send &middot; ctrl+k commands &middot; ctrl+n new &middot; ctrl+` terminal</div>
+        <div class="input-hint">enter send &middot; ctrl+p open file &middot; ctrl+k commands &middot; ctrl+n new &middot; @ mention</div>
       </div>
     </main>
   </div>

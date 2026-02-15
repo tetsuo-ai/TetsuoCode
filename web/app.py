@@ -1,6 +1,7 @@
 """tetsuocode Web - AI coding assistant powered by Grok"""
 import json
 import os
+import time
 import difflib
 import hashlib
 import subprocess
@@ -15,6 +16,9 @@ app = Flask(__name__)
 API_KEY = os.environ.get("XAI_API_KEY", "")
 AUTH_PASSWORD = os.environ.get("TETSUO_PASSWORD", "")
 WORKSPACE = os.path.abspath(os.environ.get("TETSUO_WORKSPACE", os.getcwd()))
+
+FILE_EDIT_HISTORY = []  # [{path, old_content, new_content, tool, timestamp}]
+MAX_UNDO_HISTORY = 50
 
 PROVIDERS = {
     "xai": {
@@ -177,6 +181,9 @@ def execute_tool(name, args):
                     old_content = f.read()
             except FileNotFoundError:
                 pass
+            FILE_EDIT_HISTORY.append({"path": path, "old_content": old_content, "new_content": content, "tool": "write_file", "timestamp": time.time()})
+            if len(FILE_EDIT_HISTORY) > MAX_UNDO_HISTORY:
+                FILE_EDIT_HISTORY.pop(0)
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
@@ -199,6 +206,9 @@ def execute_tool(name, args):
                 return json.dumps({"error": f"old_string found {count} times, must be unique"})
             old_content = content
             content = content.replace(old_string, new_string, 1)
+            FILE_EDIT_HISTORY.append({"path": path, "old_content": old_content, "new_content": content, "tool": "edit_file", "timestamp": time.time()})
+            if len(FILE_EDIT_HISTORY) > MAX_UNDO_HISTORY:
+                FILE_EDIT_HISTORY.pop(0)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
             diff = compute_diff(old_content, content, path)
@@ -812,6 +822,52 @@ def save_file():
         return jsonify({"success": True, "path": path})
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+# ── File Search ──────────────────────────────
+
+@app.route("/api/files/search")
+def search_files():
+    query = request.args.get("q", "").lower()
+    if not query:
+        return jsonify({"files": []})
+    results = []
+    skip_dirs = {".git", "node_modules", "__pycache__", "dist", "build", ".next", "venv", ".venv", ".tox", "egg-info"}
+    for root, dirs, filenames in os.walk(WORKSPACE):
+        dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith(".")]
+        for fn in filenames:
+            if query in fn.lower():
+                full = os.path.join(root, fn)
+                rel = os.path.relpath(full, WORKSPACE).replace("\\", "/")
+                results.append({"name": fn, "path": full.replace("\\", "/"), "rel": rel})
+                if len(results) >= 50:
+                    break
+        if len(results) >= 50:
+            break
+    return jsonify({"files": results})
+
+
+# ── Undo ──────────────────────────────
+
+@app.route("/api/files/undo", methods=["POST"])
+def undo_file_edit():
+    if not FILE_EDIT_HISTORY:
+        return jsonify({"error": "Nothing to undo"}), 400
+    entry = FILE_EDIT_HISTORY.pop()
+    try:
+        with open(entry["path"], "w", encoding="utf-8") as f:
+            f.write(entry["old_content"])
+        return jsonify({"success": True, "path": entry["path"], "action": f"Reverted {entry['tool']} on {os.path.basename(entry['path'])}"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/files/history")
+def file_edit_history():
+    return jsonify({"history": [
+        {"path": h["path"], "tool": h["tool"], "timestamp": h["timestamp"]}
+        for h in FILE_EDIT_HISTORY[-20:]
+    ]})
 
 
 if __name__ == "__main__":
