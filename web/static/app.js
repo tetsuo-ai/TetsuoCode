@@ -23,7 +23,7 @@ let splitTab = null;
 let selectedFiles = new Set();
 let trash = [];
 let mentionSearch = null;
-let settings = { temperature: 0.7, max_tokens: 4096, system_prompt: "", provider: "xai", api_key: "", sound: false, autoContext: false };
+let settings = { temperature: 0.7, max_tokens: 4096, system_prompt: "", provider: "xai", api_key: "", sound: false, autoContext: false, contextMode: "smart" };
 
 const SYSTEM_PRESETS = {
   "": "",
@@ -134,7 +134,17 @@ function emptyTrash(){trash=[];saveTrash();renderTrash()}
 
 // ── Token Cost & Context ──────────────────────
 function updateTokenDisplay(){tokenCountEl.textContent=totalTokens.total?`${totalTokens.total.toLocaleString()} tokens`:"";const model=document.getElementById("modelSelect").value;const pricing=MODEL_PRICING[model];if(pricing&&totalTokens.total){const cost=(totalTokens.prompt*pricing[0]+totalTokens.completion*pricing[1])/1000000;document.getElementById("tokenCost").textContent=`~$${cost.toFixed(4)}`}updateContextBar()}
-function updateContextBar(){const model=document.getElementById("modelSelect").value;const limit=CONTEXT_LIMITS[model]||131072;const pct=Math.min((totalTokens.total/limit)*100,100);const fill=document.getElementById("contextFill");fill.style.width=pct+"%";fill.className="context-fill"+(pct>80?" ctx-red":pct>50?" ctx-yellow":"")}
+function updateContextBar(){
+  const model=document.getElementById("modelSelect").value;const limit=CONTEXT_LIMITS[model]||131072;
+  // Use server-reported tokens if available, otherwise estimate from message content
+  let used=totalTokens.total;
+  if(!used){let est=0;for(const m of messages)est+=estimateTokens(m.content);used=est}
+  const pct=Math.min((used/limit)*100,100);
+  const fill=document.getElementById("contextFill");fill.style.width=pct+"%";
+  fill.className="context-fill"+(pct>80?" ctx-red":pct>50?" ctx-yellow":"");
+  const bar=document.getElementById("contextBar");
+  bar.title=`${used.toLocaleString()} / ${limit.toLocaleString()} tokens (${Math.round(pct)}%) — mode: ${settings.contextMode||"smart"}`;
+}
 
 // ── Export/Import ──────────────────────────
 function exportChats(){const b=new Blob([JSON.stringify(chats,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=`tetsuocode-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href)}
@@ -143,10 +153,10 @@ function exportMarkdown(){if(!messages.length)return;let md=`# ${chatTitleEl.tex
 async function uploadFile(file){const f=new FormData();f.append("file",file);try{const r=await fetch("/api/upload",{method:"POST",body:f});const d=await r.json();if(d.image)inputEl.value+=`\n[Attached image: ${d.filename}]`;else if(d.content)inputEl.value+=`\n\`\`\`\n// ${d.filename}\n${d.content.slice(0,5000)}\n\`\`\``;inputEl.focus();inputEl.style.height=Math.min(inputEl.scrollHeight,200)+"px"}catch(e){alert("Upload failed")}}
 
 // ── Settings ──────────────────────────────
-function toggleSettings(){const p=document.getElementById("settingsPanel");if(!p.classList.contains("hidden")){p.classList.add("hidden");return}document.getElementById("settingProvider").value=settings.provider;document.getElementById("settingApiKey").value=settings.api_key;document.getElementById("settingTemp").value=settings.temperature;document.getElementById("tempValue").textContent=settings.temperature;document.getElementById("settingMaxTokens").value=settings.max_tokens;document.getElementById("settingSystemPrompt").value=settings.system_prompt;document.getElementById("settingSound").checked=settings.sound;document.getElementById("settingAutoContext").checked=settings.autoContext;p.classList.remove("hidden")}
+function toggleSettings(){const p=document.getElementById("settingsPanel");if(!p.classList.contains("hidden")){p.classList.add("hidden");return}document.getElementById("settingProvider").value=settings.provider;document.getElementById("settingApiKey").value=settings.api_key;document.getElementById("settingTemp").value=settings.temperature;document.getElementById("tempValue").textContent=settings.temperature;document.getElementById("settingMaxTokens").value=settings.max_tokens;document.getElementById("settingSystemPrompt").value=settings.system_prompt;document.getElementById("settingSound").checked=settings.sound;document.getElementById("settingAutoContext").checked=settings.autoContext;document.getElementById("settingContextMode").value=settings.contextMode||"smart";p.classList.remove("hidden")}
 function onProviderChange(){const p=document.getElementById("settingProvider").value;document.getElementById("modelSelect").innerHTML=(PROVIDER_MODELS[p]||[]).map(m=>`<option value="${m}">${m}</option>`).join("")}
 function onPresetChange(){document.getElementById("settingSystemPrompt").value=SYSTEM_PRESETS[document.getElementById("settingPreset").value]||""}
-function applySettings(){settings.provider=document.getElementById("settingProvider").value;settings.api_key=document.getElementById("settingApiKey").value;settings.temperature=parseFloat(document.getElementById("settingTemp").value)||0.7;settings.max_tokens=parseInt(document.getElementById("settingMaxTokens").value)||4096;settings.system_prompt=document.getElementById("settingSystemPrompt").value.trim();settings.sound=document.getElementById("settingSound").checked;settings.autoContext=document.getElementById("settingAutoContext").checked;saveSettings();populateModels();toggleSettings()}
+function applySettings(){settings.provider=document.getElementById("settingProvider").value;settings.api_key=document.getElementById("settingApiKey").value;settings.temperature=parseFloat(document.getElementById("settingTemp").value)||0.7;settings.max_tokens=parseInt(document.getElementById("settingMaxTokens").value)||4096;settings.system_prompt=document.getElementById("settingSystemPrompt").value.trim();settings.sound=document.getElementById("settingSound").checked;settings.autoContext=document.getElementById("settingAutoContext").checked;settings.contextMode=document.getElementById("settingContextMode").value;saveSettings();populateModels();toggleSettings()}
 
 // ── Theme ──────────────────────────────
 function toggleTheme(){document.body.classList.toggle("light");localStorage.setItem("tetsuocode_theme",document.body.classList.contains("light")?"light":"dark")}
@@ -272,7 +282,21 @@ function renderFileEntries(entries,container,depth){for(const e of entries){cons
 async function changeWorkspace(){const p=prompt("Enter workspace path:");if(!p)return;try{const r=await fetch("/api/workspace",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:p})});const d=await r.json();if(d.workspace)loadFileTree();else alert(d.error||"Failed")}catch(e){alert("Failed")}}
 function toggleFileSelect(path,cb){if(cb.checked)selectedFiles.add(path);else selectedFiles.delete(path);const bar=document.getElementById("fileSelectBar");document.getElementById("fileSelectCount").textContent=`${selectedFiles.size} selected`;if(selectedFiles.size>0)bar.classList.remove("hidden");else bar.classList.add("hidden")}
 function clearFileSelection(){selectedFiles.clear();document.querySelectorAll(".file-checkbox").forEach(cb=>cb.checked=false);document.getElementById("fileSelectBar").classList.add("hidden")}
-async function attachSelectedFiles(){if(!selectedFiles.size)return;let ctx="";for(const path of[...selectedFiles].slice(0,5)){try{const r=await fetch(`/api/files/read?path=${encodeURIComponent(path)}`);const d=await r.json();if(d.content)ctx+=`\n\`\`\`\n// ${path.split("/").pop()}\n${d.content.slice(0,5000)}\n\`\`\`\n`}catch(e){}}if(ctx){inputEl.value+=ctx;inputEl.style.height=Math.min(inputEl.scrollHeight,200)+"px";inputEl.focus()}clearFileSelection()}
+async function attachSelectedFiles(){
+  if(!selectedFiles.size)return;let ctx="";let totalTk=0;
+  const mode=settings.contextMode||"smart";const maxFiles=mode==="full"?5:10;
+  for(const path of[...selectedFiles].slice(0,maxFiles)){
+    const file=await getFileSmart(path);if(!file)continue;
+    if(file.type==="ref"){ctx+=`\n@${path.split("/").pop()} `;continue}
+    const label=file.type==="summary"?"summary":"";
+    ctx+=`\n\`\`\`\n// ${path.split("/").pop()}${label?" ("+label+")":""}\n${file.text}\n\`\`\`\n`;
+    totalTk+=(file.tokens||0);
+  }
+  if(ctx){
+    if(totalTk>0)showNotification(`Attached ~${totalTk.toLocaleString()} tokens`);
+    inputEl.value+=ctx;inputEl.style.height=Math.min(inputEl.scrollHeight,200)+"px";inputEl.focus()
+  }clearFileSelection();
+}
 
 // ── Outline / Symbol View ──────────────────────
 async function loadOutline(){
@@ -370,9 +394,47 @@ function loadSessionSnapshot(idx){if(idx==="")return;let snaps=[];try{snaps=JSON
 // ── Notification Helper ──────────────────────
 function showNotification(text,type){const n=document.createElement("div");n.className="undo-notification"+(type==="error"?" undo-error":"");n.textContent=text;document.body.appendChild(n);setTimeout(()=>n.remove(),3000)}
 
+// ── Token Estimation & Context Budget ──────────
+function estimateTokens(text){return Math.ceil((text||"").length/4)}
+function checkContextBudget(){
+  const model=document.getElementById("modelSelect").value;const limit=CONTEXT_LIMITS[model]||131072;
+  let total=0;for(const m of messages)total+=estimateTokens(m.content);
+  const pct=(total/limit)*100;
+  if(pct>90){showNotification(`Context ${Math.round(pct)}% full — consider summarizing or starting new chat`,"error");return false}
+  if(pct>70){showNotification(`Context ${Math.round(pct)}% full`);return true}
+  return true;
+}
+async function getFileSmart(path){
+  const mode=settings.contextMode||"smart";
+  if(mode==="lazy")return{type:"ref",text:`[File: ${path.split("/").pop()}]`};
+  try{
+    const r=await fetch(`/api/files/read?path=${encodeURIComponent(path)}`);const d=await r.json();
+    if(!d.content)return null;
+    const tokens=estimateTokens(d.content);
+    if(mode==="smart"&&tokens>2000){
+      try{const sr=await fetch(`/api/files/summary?path=${encodeURIComponent(path)}`);const sd=await sr.json();
+        if(sd.skeleton)return{type:"summary",text:`// ${path.split("/").pop()} (summary, ${sd.total_lines} lines, ~${sd.total_tokens} tokens)\n${sd.skeleton}`,tokens:sd.skeleton_tokens,fullTokens:sd.total_tokens};
+      }catch(e){}
+    }
+    return{type:"full",text:d.content.slice(0,8000),tokens,fullTokens:tokens};
+  }catch(e){return null}
+}
+
 // ── Auto Context ──────────────────────────
 function detectFilePaths(text){const paths=new Set();const patterns=[/(?:^|\s)((?:\.\/|\.\.\/|\/|[a-zA-Z]:\\)[\w\-./\\]+\.\w+)/g,/(?:^|\s)([\w\-]+\.(?:py|js|ts|tsx|jsx|rs|go|java|rb|php|c|cpp|h|lua|css|html|json|yaml|yml|toml|sh))/g];for(const p of patterns){let m;while((m=p.exec(text))!==null)paths.add(m[1].trim())}const mentionRe=/@([\w\-./\\:]+\.\w+)/g;let mm;while((mm=mentionRe.exec(text))!==null)paths.add(mm[1]);return[...paths]}
-async function attachContext(text){if(!settings.autoContext)return text;const paths=detectFilePaths(text);if(!paths.length)return text;let ctx="";for(const p of paths.slice(0,3)){try{const r=await fetch(`/api/files/read?path=${encodeURIComponent(p)}`);const d=await r.json();if(d.content)ctx+=`\n\nContents of ${p}:\n\`\`\`\n${d.content.slice(0,5000)}\n\`\`\`\n`}catch(e){}}return ctx?text+"\n\n[Auto-attached context:]"+ctx:text}
+async function attachContext(text){
+  if(!settings.autoContext)return text;
+  const mode=settings.contextMode||"smart";
+  if(mode==="lazy")return text;
+  const paths=detectFilePaths(text);if(!paths.length)return text;
+  let ctx="";
+  for(const p of paths.slice(0,3)){
+    const file=await getFileSmart(p);if(!file||file.type==="ref")continue;
+    const label=file.type==="summary"?"Summary of":"Contents of";
+    ctx+=`\n\n${label} ${p}:\n\`\`\`\n${file.text}\n\`\`\`\n`;
+  }
+  return ctx?text+"\n\n[Auto-attached context:]"+ctx:text;
+}
 
 // ── Rendering ──────────────────────────────
 function scrollToBottom(){if(autoScroll)messagesEl.scrollTop=messagesEl.scrollHeight}
@@ -397,11 +459,24 @@ function playNotification(){if(!settings.sound)return;try{const ctx=new(window.A
 async function sendMessage(retryText){
   let text=retryText||inputEl.value.trim();if(!text||streaming)return;
   const mentionedPaths=[];const mentionRe=/@([\w\-./\\:]+\.\w+)/g;let mm;while((mm=mentionRe.exec(text))!==null)mentionedPaths.push(mm[1]);
-  if(!retryText){let contextText=text;if(mentionedPaths.length){for(const p of mentionedPaths.slice(0,5)){try{const r=await fetch(`/api/files/read?path=${encodeURIComponent(p)}`);const d=await r.json();if(d.content)contextText+=`\n\nContents of ${p}:\n\`\`\`\n${d.content.slice(0,5000)}\n\`\`\`\n`}catch(e){}}}contextText=await attachContext(contextText);addMessage("user",text,false,Date.now(),messages.length);messages.push({role:"user",content:contextText,timestamp:Date.now()})}
+  if(!retryText){
+    let contextText=text;const mode=settings.contextMode||"smart";
+    if(mentionedPaths.length&&mode!=="lazy"){
+      for(const p of mentionedPaths.slice(0,5)){
+        const file=await getFileSmart(p);if(!file||file.type==="ref")continue;
+        const label=file.type==="summary"?"Summary of":"Contents of";
+        contextText+=`\n\n${label} ${p}:\n\`\`\`\n${file.text}\n\`\`\`\n`;
+      }
+    }
+    contextText=await attachContext(contextText);
+    addMessage("user",text,false,Date.now(),messages.length);
+    messages.push({role:"user",content:contextText,timestamp:Date.now()});
+    checkContextBudget();
+  }
   if(messages.filter(m=>m.role==="user").length===1)chatTitleEl.textContent=text.length>40?text.slice(0,40)+"...":text;
   inputEl.value="";inputEl.style.height="auto";streaming=true;sendBtn.classList.add("hidden");cancelBtn.classList.remove("hidden");
   const streamMsg=addThinking();const body=streamMsg.querySelector(".message-body");let fullContent="";let hadError=false;abortController=new AbortController();
-  try{const model=document.getElementById("modelSelect").value;const payload={messages,model,provider:settings.provider};if(settings.temperature!==0.7)payload.temperature=settings.temperature;if(settings.max_tokens!==4096)payload.max_tokens=settings.max_tokens;if(settings.system_prompt)payload.system_prompt=settings.system_prompt;if(settings.api_key)payload.api_key=settings.api_key;
+  try{const model=document.getElementById("modelSelect").value;const payload={messages,model,provider:settings.provider,context_mode:settings.contextMode||"smart"};if(settings.temperature!==0.7)payload.temperature=settings.temperature;if(settings.max_tokens!==4096)payload.max_tokens=settings.max_tokens;if(settings.system_prompt)payload.system_prompt=settings.system_prompt;if(settings.api_key)payload.api_key=settings.api_key;
     const resp=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),signal:abortController.signal});if(!resp.ok)throw new Error(`server returned ${resp.status}`);
     const reader=resp.body.getReader();const decoder=new TextDecoder();let buffer="";
     while(true){const{done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop();

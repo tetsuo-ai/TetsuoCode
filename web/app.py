@@ -21,6 +21,71 @@ WORKSPACE = os.path.abspath(os.environ.get("TETSUO_WORKSPACE", os.getcwd()))
 FILE_EDIT_HISTORY = []  # [{path, old_content, new_content, tool, timestamp}]
 MAX_UNDO_HISTORY = 50
 
+
+def estimate_tokens(text):
+    """Rough token estimate: ~4 chars per token."""
+    return len(text) // 4
+
+
+def _get_workspace_tree(max_files=200):
+    """Return compact workspace file listing with sizes."""
+    skip_dirs = {".git", "node_modules", "__pycache__", "dist", "build", ".next", "venv", ".venv", ".tox", "egg-info"}
+    skip_ext = {".pyc", ".pyo", ".exe", ".dll", ".so", ".o", ".class", ".png", ".jpg", ".gif", ".ico", ".woff", ".woff2", ".ttf", ".map"}
+    files = []
+    for root, dirs, filenames in os.walk(WORKSPACE):
+        dirs[:] = sorted([d for d in dirs if d not in skip_dirs and not d.startswith(".")])
+        for fn in sorted(filenames):
+            ext = os.path.splitext(fn)[1].lower()
+            if ext in skip_ext:
+                continue
+            full = os.path.join(root, fn)
+            rel = os.path.relpath(full, WORKSPACE).replace("\\", "/")
+            try:
+                size = os.path.getsize(full)
+            except Exception:
+                size = 0
+            files.append({"path": rel, "size": size, "tokens": size // 4})
+            if len(files) >= max_files:
+                break
+        if len(files) >= max_files:
+            break
+    return files
+
+
+def _build_file_skeleton(path, content):
+    """Build a skeleton summary of a file: imports + function/class signatures."""
+    ext = os.path.splitext(path)[1].lower()
+    lines = content.split("\n")
+    parts = []
+
+    # Imports
+    import_lines = []
+    for line in lines[:100]:
+        stripped = line.strip()
+        if (stripped.startswith("import ") or stripped.startswith("from ") or
+            (stripped.startswith(("const ", "let ", "var ")) and "require" in stripped) or
+            stripped.startswith("use ") or stripped.startswith("#include")):
+            import_lines.append(line.rstrip())
+    if import_lines:
+        parts.append("\n".join(import_lines))
+
+    # Symbols
+    patterns = SYMBOL_PATTERNS.get(ext, SYMBOL_PATTERNS.get(".js", []))
+    if ext in (".tsx", ".jsx", ".mjs"):
+        patterns = SYMBOL_PATTERNS.get(".js", [])
+
+    for i, line in enumerate(lines, 1):
+        for pat, kind, group in patterns:
+            m = re.match(pat, line)
+            if m:
+                try:
+                    m.group(group)
+                except IndexError:
+                    continue
+                parts.append(f"L{i}: [{kind}] {line.rstrip()}")
+
+    return "\n".join(parts) if parts else "\n".join(lines[:30]) + "\n// ..."
+
 PROVIDERS = {
     "xai": {
         "name": "xAI (Grok)",
@@ -352,7 +417,19 @@ def chat():
             mimetype="text/event-stream",
         )
 
+    context_mode = data.get("context_mode", "smart")
     sys_prompt = custom_system if custom_system else SYSTEM_PROMPT
+
+    # Lazy mode: inject workspace file listing so the model uses read_file tool
+    if context_mode == "lazy":
+        tree_files = _get_workspace_tree(150)
+        file_list = "\n".join(f"  {f['path']} (~{f['tokens']} tokens)" for f in tree_files)
+        sys_prompt += (
+            "\n\nYou have access to this workspace. Use the read_file tool to access any file you need. "
+            "Do NOT ask the user to paste file contents — read them yourself.\n\n"
+            f"Workspace files:\n{file_list}"
+        )
+
     full_messages = [{"role": "system", "content": sys_prompt}] + messages
 
     def generate():
@@ -1043,6 +1120,103 @@ def rename_symbol():
             except Exception:
                 continue
     return jsonify({"replaced": replaced_count, "files": len(files_changed), "changed": files_changed})
+
+
+# ── File Summary ──────────────────────────────
+
+@app.route("/api/files/summary")
+def file_summary():
+    path = request.args.get("path", "")
+    if not path:
+        return jsonify({"error": "path required"}), 400
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        total_lines = content.count("\n") + 1
+        total_tokens = estimate_tokens(content)
+        skeleton = _build_file_skeleton(path, content)
+        return jsonify({
+            "path": path,
+            "total_lines": total_lines,
+            "total_tokens": total_tokens,
+            "skeleton": skeleton,
+            "skeleton_tokens": estimate_tokens(skeleton),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+# ── File Chunk ──────────────────────────────
+
+@app.route("/api/files/chunk")
+def file_chunk():
+    path = request.args.get("path", "")
+    center_line = int(request.args.get("line", 0))
+    ctx_lines = int(request.args.get("context", 50))
+    pattern = request.args.get("pattern", "")
+    if not path:
+        return jsonify({"error": "path required"}), 400
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        chunks = []
+        if center_line > 0:
+            start = max(0, center_line - ctx_lines - 1)
+            end = min(len(lines), center_line + ctx_lines)
+            chunks.append({"start": start + 1, "end": end, "text": "".join(lines[start:end])})
+        if pattern:
+            try:
+                pat = re.compile(pattern, re.IGNORECASE)
+                for i, line in enumerate(lines):
+                    if pat.search(line):
+                        s = max(0, i - 10)
+                        e = min(len(lines), i + 10)
+                        chunks.append({"start": s + 1, "end": e, "text": "".join(lines[s:e]), "match_line": i + 1})
+                        if len(chunks) >= 10:
+                            break
+            except re.error:
+                pass
+        if not chunks and not center_line and not pattern:
+            chunks.append({"start": 1, "end": min(len(lines), ctx_lines), "text": "".join(lines[:ctx_lines])})
+        return jsonify({"path": path, "total_lines": len(lines), "chunks": chunks})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+# ── Workspace Tree ──────────────────────────────
+
+@app.route("/api/files/tree")
+def workspace_tree():
+    max_files = int(request.args.get("max", 200))
+    files = _get_workspace_tree(max_files)
+    return jsonify({"files": files, "workspace": WORKSPACE.replace("\\", "/")})
+
+
+# ── Context Budget Estimation ──────────────────────
+
+@app.route("/api/context/estimate", methods=["POST"])
+def estimate_context():
+    data = request.json
+    msgs = data.get("messages", [])
+    model = data.get("model", "grok-3")
+    limits = {
+        "grok-4-1-fast-reasoning": 131072, "grok-3-fast": 131072, "grok-3": 131072, "grok-3-mini": 131072,
+        "gpt-4o": 128000, "gpt-4o-mini": 128000, "o1": 200000, "o1-mini": 128000,
+        "claude-sonnet-4-5-20250929": 200000, "claude-haiku-4-5-20251001": 200000,
+    }
+    limit = limits.get(model, 131072)
+    total = 0
+    breakdown = []
+    for msg in msgs:
+        content = msg.get("content", "") or ""
+        tokens = estimate_tokens(content)
+        total += tokens
+        breakdown.append({"role": msg.get("role", ""), "tokens": tokens})
+    return jsonify({
+        "total_tokens": total, "limit": limit,
+        "usage_pct": round((total / limit) * 100, 1) if limit else 0,
+        "remaining": limit - total, "breakdown": breakdown,
+    })
 
 
 if __name__ == "__main__":

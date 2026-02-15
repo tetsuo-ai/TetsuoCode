@@ -281,6 +281,14 @@
         <div class="setting-group">
           <label class="setting-checkbox"><input type="checkbox" id="settingAutoContext"> auto-attach detected files</label>
         </div>
+        <div class="setting-group">
+          <label>context mode <span class="setting-hint">(how files are sent to the model)</span></label>
+          <select id="settingContextMode">
+            <option value="lazy">lazy — model reads files on demand (best for small context)</option>
+            <option value="smart">smart — summaries for large files, full for small (recommended)</option>
+            <option value="full">full — attach complete file contents (uses most context)</option>
+          </select>
+        </div>
         <button class="settings-save" onclick="applySettings()">save</button>
       </div>
     </div>
