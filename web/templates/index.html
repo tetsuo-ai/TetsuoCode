@@ -8,39 +8,93 @@
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/rust.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/kotlin.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/swift.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/ruby.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/php.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/scala.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/haskell.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/elixir.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/lua.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/nginx.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/vim.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
 </head>
 <body>
+  <!-- Login overlay -->
+  <div class="login-overlay hidden" id="loginOverlay">
+    <div class="login-box">
+      <h2>tetsuocode</h2>
+      <p>enter password to continue</p>
+      <input type="password" id="loginPassword" placeholder="password" autofocus>
+      <button onclick="submitLogin()">enter</button>
+      <div class="login-error hidden" id="loginError">wrong password</div>
+    </div>
+  </div>
+
+  <!-- Search overlay -->
+  <div class="search-overlay hidden" id="searchOverlay">
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="search messages..." oninput="doSearch(this.value)">
+      <span class="search-count" id="searchCount"></span>
+      <button class="search-close" onclick="closeSearch()">&times;</button>
+    </div>
+  </div>
+
+  <!-- File viewer -->
+  <div class="file-viewer hidden" id="fileViewer">
+    <div class="file-viewer-header">
+      <span id="fileViewerPath"></span>
+      <button onclick="closeFileViewer()">&times;</button>
+    </div>
+    <pre class="file-viewer-content"><code id="fileViewerContent"></code></pre>
+  </div>
+
   <div class="app">
-    <!-- Mobile sidebar overlay -->
     <div class="sidebar-overlay hidden" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
-    <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
         <span class="logo">tetsuocode</span>
       </div>
-      <div class="sidebar-nav">
-        <button class="nav-btn active" onclick="newChat()">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          new chat
-        </button>
+
+      <!-- Sidebar tabs -->
+      <div class="sidebar-tabs">
+        <button class="sidebar-tab active" onclick="switchTab('chats')" id="tabChats">chats</button>
+        <button class="sidebar-tab" onclick="switchTab('files')" id="tabFiles">files</button>
       </div>
-      <div class="sidebar-chats" id="chatHistory"></div>
+
+      <!-- Chats panel -->
+      <div class="sidebar-panel" id="panelChats">
+        <div class="sidebar-nav">
+          <button class="nav-btn active" onclick="newChat()">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            new chat
+          </button>
+        </div>
+        <div class="sidebar-chats" id="chatHistory"></div>
+      </div>
+
+      <!-- Files panel -->
+      <div class="sidebar-panel hidden" id="panelFiles">
+        <div class="workspace-bar">
+          <span id="workspacePath" class="workspace-path"></span>
+          <button class="workspace-change" onclick="changeWorkspace()" title="Change workspace">...</button>
+        </div>
+        <div class="file-tree" id="fileTree"></div>
+      </div>
+
       <div class="sidebar-footer">
         <div class="sidebar-actions">
-          <button class="sidebar-action-btn" onclick="exportChats()" title="Export chats">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 10v3h10v-3M8 2v8M5 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            export
-          </button>
-          <button class="sidebar-action-btn" onclick="importChats()" title="Import chats">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 10v3h10v-3M8 10V2M5 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            import
-          </button>
-          <button class="sidebar-action-btn" onclick="toggleSettings()" title="Settings (Ctrl+,)">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5L13 13M13 3l-1.5 1.5M4.5 11.5L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-            settings
-          </button>
+          <button class="sidebar-action-btn" onclick="exportChats()" title="Export">export</button>
+          <button class="sidebar-action-btn" onclick="importChats()" title="Import">import</button>
+          <button class="sidebar-action-btn" onclick="exportMarkdown()" title="Export as markdown">md</button>
+          <button class="sidebar-action-btn" onclick="toggleSettings()" title="Settings (Ctrl+,)">settings</button>
         </div>
         <div class="model-select">
           <label>model</label>
@@ -63,6 +117,19 @@
       </div>
       <div class="settings-body">
         <div class="setting-group">
+          <label>provider</label>
+          <select id="settingProvider" onchange="onProviderChange()">
+            <option value="xai">xAI (Grok)</option>
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="ollama">Ollama (Local)</option>
+          </select>
+        </div>
+        <div class="setting-group">
+          <label>api key <span class="setting-hint">(overrides env var)</span></label>
+          <input type="password" id="settingApiKey" placeholder="leave empty to use env var">
+        </div>
+        <div class="setting-group">
           <label>temperature</label>
           <input type="range" id="settingTemp" min="0" max="1" step="0.1" value="0.7">
           <span class="setting-value" id="tempValue">0.7</span>
@@ -75,12 +142,18 @@
           <label>system prompt</label>
           <textarea id="settingSystemPrompt" rows="4" placeholder="Custom system prompt (leave empty for default)"></textarea>
         </div>
+        <div class="setting-group">
+          <label class="setting-checkbox">
+            <input type="checkbox" id="settingSound">
+            sound notification on completion
+          </label>
+        </div>
         <button class="settings-save" onclick="applySettings()">save</button>
       </div>
     </div>
 
     <!-- Main chat area -->
-    <main class="chat-area">
+    <main class="chat-area" id="chatArea">
       <div class="chat-header">
         <button class="hamburger" onclick="toggleSidebar()">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -101,6 +174,11 @@
         </div>
       </div>
 
+      <!-- Drop zone -->
+      <div class="drop-zone hidden" id="dropZone">
+        <span>drop file to attach</span>
+      </div>
+
       <!-- Input area -->
       <div class="input-area">
         <div class="input-container">
@@ -116,17 +194,16 @@
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="3" width="10" height="10" rx="1" fill="currentColor"/></svg>
           </button>
         </div>
-        <div class="input-hint">enter to send &middot; shift+enter for newline &middot; ctrl+n new chat &middot; ctrl+, settings</div>
+        <div class="input-hint">enter send &middot; shift+enter newline &middot; ctrl+n new &middot; ctrl+, settings &middot; ctrl+f search</div>
       </div>
     </main>
   </div>
 
   <script src="/static/app.js"></script>
   <script>
-    // Wire up temperature slider display
-    const tempSlider = document.getElementById("settingTemp");
-    const tempValue = document.getElementById("tempValue");
-    tempSlider.addEventListener("input", () => { tempValue.textContent = tempSlider.value; });
+    document.getElementById("settingTemp").addEventListener("input", function() {
+      document.getElementById("tempValue").textContent = this.value;
+    });
   </script>
 </body>
 </html>
