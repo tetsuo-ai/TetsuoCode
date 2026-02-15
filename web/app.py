@@ -1730,8 +1730,13 @@ def index_search():
 
 
 if __name__ == "__main__":
+    import argparse as _ap
+    _p = _ap.ArgumentParser()
+    _p.add_argument("--port", type=int, default=5000)
+    _p.add_argument("--host", default="127.0.0.1")
+    _args = _p.parse_args()
     if not API_KEY:
         print("WARNING: XAI_API_KEY not set. Set it before making requests.")
     print(f"Workspace: {WORKSPACE}")
-    print("Starting tetsuocode Web on http://localhost:5000")
-    app.run(debug=True, port=5000, use_reloader=False)
+    print(f"Starting tetsuocode Web on http://{_args.host}:{_args.port}")
+    app.run(debug=True, host=_args.host, port=_args.port, use_reloader=False)

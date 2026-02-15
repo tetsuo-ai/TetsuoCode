@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tetsuocode"
+version = "1.0.0"
+description = "AI coding assistant powered by Grok — Cursor for your terminal"
+readme = "README.md"
+license = {text = "GPL-3.0"}
+requires-python = ">=3.10"
+authors = [{name = "tetsuo-ai"}]
+keywords = ["ai", "coding", "assistant", "grok", "xai", "copilot", "cursor"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Text Editors :: Integrated Development Environments (IDE)",
+]
+dependencies = [
+    "flask>=3.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = ["pyinstaller>=6.0", "pytest"]
+
+[project.scripts]
+tetsuocode = "web.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/tetsuo-ai/tetsuo-code"
+Repository = "https://github.com/tetsuo-ai/tetsuo-code"
+Issues = "https://github.com/tetsuo-ai/tetsuo-code/issues"
+
+[tool.setuptools.packages.find]
+include = ["web*"]
+
+[tool.setuptools.package-data]
+web = ["templates/*.html", "static/*.js", "static/*.css"]

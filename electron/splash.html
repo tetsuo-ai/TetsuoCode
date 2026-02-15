@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    border-radius: 16px;
+    border: 1px solid #222;
+    overflow: hidden;
+    -webkit-app-region: drag;
+  }
+  .logo { width: 96px; height: 96px; margin-bottom: 20px; border-radius: 18px; }
+  h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; color: #fff; }
+  .sub { font-size: 13px; color: #888; margin-bottom: 32px; }
+  .ld {
+    width: 32px; height: 32px; margin: 0 auto;
+    border: 2px solid #333; border-top-color: #fff;
+    border-radius: 50%; animation: s 0.8s linear infinite;
+  }
+  @keyframes s { to { transform: rotate(360deg); } }
+  .st { font-size: 11px; color: #555; margin-top: 18px; }
+</style>
+</head>
+<body>
+  <div style="text-align:center">
+    <img class="logo" src="icon.png" alt="" />
+    <h1>tetsuocode</h1>
+    <div class="sub">AI Coding Assistant</div>
+    <div class="ld"></div>
+    <div class="st">Starting engine...</div>
+  </div>
+</body>
+</html>
